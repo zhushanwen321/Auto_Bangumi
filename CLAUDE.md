@@ -20,9 +20,17 @@ cd backend && uv sync --group dev
 # Run development server (port 7892, API docs at /docs)
 cd backend/src && uv run python main.py
 
-# Run tests
+# Run all tests
 cd backend && uv run pytest
-cd backend && uv run pytest src/test/test_xxx.py -v  # run specific test
+
+# Run a single test file
+cd backend && uv run pytest src/test/test_xxx.py -v
+
+# Run a specific test function
+cd backend && uv run pytest src/test/test_xxx.py::test_func_name -v
+
+# E2E tests (require Docker, marked separately)
+cd backend && uv run pytest -m e2e
 
 # Linting and formatting
 cd backend && uv run ruff check src
@@ -40,16 +48,16 @@ cd backend && uv add --group dev <package>
 ```bash
 cd webui
 
-# Install dependencies (uses pnpm, not npm)
+# Install dependencies (uses pnpm, NOT npm)
 pnpm install
 
-# Development server (port 5173)
+# Development server (port 5173, proxies /api to localhost:7892)
 pnpm dev
 
 # Build for production
 pnpm build
 
-# Type checking
+# Type checking (vue-tsc --noEmit)
 pnpm test:build
 
 # Linting and formatting
@@ -67,58 +75,157 @@ docker run -p 7892:7892 -v /path/to/config:/app/config -v /path/to/data:/app/dat
 
 ## Architecture
 
+### Backend Structure
+
 ```
 backend/src/
-├── main.py                 # FastAPI entry point, mounts API at /api
+├── main.py                 # FastAPI entry point (lifespan context manager)
 ├── module/
-│   ├── api/               # REST API routes (v1 prefix)
-│   │   ├── auth.py        # Authentication endpoints
-│   │   ├── bangumi.py     # Anime series CRUD
-│   │   ├── rss.py         # RSS feed management
-│   │   ├── config.py      # Configuration endpoints
-│   │   ├── program.py     # Program status/control
-│   │   └── search.py      # Torrent search
-│   ├── core/              # Application logic
-│   │   ├── program.py     # Main controller, orchestrates all operations
-│   │   ├── sub_thread.py  # Background task execution
-│   │   └── status.py      # Application state tracking
-│   ├── models/            # SQLModel ORM models (Pydantic + SQLAlchemy)
-│   ├── database/          # Database operations (SQLite at data/data.db)
-│   ├── rss/               # RSS parsing and analysis
-│   ├── downloader/        # qBittorrent integration
-│   │   └── client/        # Download client implementations (qb, aria2, tr)
-│   ├── searcher/          # Torrent search providers (Mikan, DMHY, Nyaa)
-│   ├── parser/            # Torrent name parsing, metadata extraction
-│   │   └── analyser/      # TMDB, Mikan, OpenAI parsers
-│   ├── manager/           # File organization and renaming
+│   ├── api/               # REST API routes — all routers registered in __init__.py under /api/v1
+│   ├── core/
+│   │   ├── program.py     # Main controller — uses MULTIPLE INHERITANCE from thread classes
+│   │   └── sub_thread.py  # Background async threads (RSS, Rename, OffsetScan, Calendar)
+│   ├── models/            # SQLModel ORM models (Pydantic + SQLAlchemy hybrid)
+│   ├── database/          # SQLite operations — uses composition pattern (see below)
+│   ├── conf/              # Config management — singleton `settings`, JSON file + env vars
+│   ├── rss/               # RSS feed parsing and analysis
+│   ├── downloader/        # Download client abstraction (qb, aria2) with factory method
+│   ├── parser/            # Torrent name parsing — regex + TMDB + OpenAI strategies
+│   ├── manager/           # File organization and renaming into Plex/Jellyfin structure
 │   ├── notification/      # Notification plugins (Telegram, Bark, etc.)
-│   ├── conf/              # Configuration management, settings
-│   ├── network/           # HTTP client utilities
-│   └── security/          # JWT authentication
-
-webui/src/
-├── api/                   # Axios API client functions
-├── components/            # Vue components (basic/, layout/, setting/)
-├── pages/                 # Router-based page components
-├── router/                # Vue Router configuration
-├── store/                 # Pinia state management
-├── i18n/                  # Internationalization (zh-CN, en-US)
-└── hooks/                 # Custom Vue composables
+│   ├── security/          # JWT auth (HttpOnly cookies) + WebAuthn strategy pattern
+│   ├── mcp/               # Model Context Protocol server mounted at /mcp
+│   └── network/           # HTTP client utilities (httpx with SOCKS proxy)
 ```
+
+### Frontend Structure
+
+```
+webui/src/
+├── pages/                 # File-based routing (unplugin-vue-router) — just create .vue files
+├── components/            # Auto-imported components (no manual imports needed)
+│   ├── basic/             # Reusable primitives (ab-button, ab-switch, etc.)
+│   ├── layout/            # Layout (sidebar, topbar, mobile-nav)
+│   ├── setting/           # Config panels (config-*.vue)
+│   └── setup/             # Setup wizard steps (wizard-step-*.vue)
+├── api/                   # Axios API modules — auto-imported globally
+├── store/                 # Pinia stores (composition API style)
+├── hooks/                 # Custom composables — auto-imported globally
+├── i18n/                  # Internationalization (zh-CN, en)
+├── style/                 # CSS variables, mixins, UnoCSS
+└── types/                 # TypeScript definitions + auto-generated .d.ts
+```
+
+## Key Architectural Patterns
+
+### Backend: Program Controller (Multiple Inheritance)
+
+`Program` in `core/program.py` inherits from four thread classes (`RenameThread`, `RSSThread`, `OffsetScanThread`, `CalendarRefreshThread`). Each thread runs an async loop with cooperative cancellation via `asyncio.Event`. The startup method uses a `_startup_done` guard to prevent duplicate initialization from nested lifespan events.
+
+### Backend: Database Composition
+
+Database access uses a composition pattern in `database/combine.py`:
+```python
+class Database(Session):
+    def __init__(self):
+        self.rss = RSSDatabase(self)
+        self.torrent = TorrentDatabase(self)
+        self.bangumi = BangumiDatabase(self)
+        self.user = UserDatabase(self)
+```
+The main `Program` instance holds a `Database` that provides access to all sub-databases.
+
+### Backend: Configuration Dual Loading
+
+Config (`conf/config.py`) loads from two sources:
+1. **JSON file** (`config/config.json`) — if it exists, load and auto-migrate from older versions
+2. **Environment variables** (prefixed `AB_*`) — used when no config file exists, mapped via `ENV_TO_ATTR` in `conf/const.py`
+
+Config is a module-level singleton accessed as `from module.conf import settings`.
+
+### Backend: API Route Registration
+
+All API routers are registered in `module/api/__init__.py` under the `/api/v1` prefix. To add a new endpoint:
+1. Create a router in `module/api/new_feature.py`
+2. Import and include it in `module/api/__init__.py`
+
+Auth is handled via FastAPI's `Depends()` injection using JWT tokens stored in HttpOnly cookies.
+
+### Backend: Downloader Factory
+
+`DownloadClient` uses a factory method pattern — `__getClient()` returns the appropriate client based on config. Supported: qBittorrent (primary), Aria2, MockDownloader (tests). All clients follow async context manager protocol. Torrent tracking uses tags (`ab:<bangumi_id>`) for episode offset lookup.
+
+### Frontend: Zero-Import Development
+
+The frontend uses three unplugin tools for automatic imports — no manual import statements needed for:
+- **Vue APIs** (`ref`, `computed`, `watch`), **VueUse**, **Pinia**, **Vue Router**
+- **All components** in `src/components/` (use `<AbButton />` directly)
+- **All composables** in `src/hooks/` (use `useApi()` directly)
+- **All API modules** in `src/api/` (use `apiBangumi.getAll()` directly)
+
+### Frontend: File-Based Routing
+
+Routes are generated from `src/pages/**/*.vue`. To add a page:
+1. Create `src/pages/my-page.vue`
+2. Optionally add `definePage({ name: 'My Page' })`
+3. Route is auto-generated as `/my-page`
+
+Navigation guards handle auth checks and setup redirects.
+
+### Frontend: API Wrapper Pattern
+
+All store actions use the `useApi()` composable for consistent error handling, loading states, and success/error messages:
+```typescript
+const { execute, isLoading } = useApi(apiBangumi.updateRule, {
+  showMessage: true,
+  onSuccess() { /* refresh */ },
+});
+```
+
+Axios response interceptor auto-handles 401 (logout) and 500 (error message) responses.
+
+### Frontend: Path Aliases
+
+- `@/` → `src/`
+- `~/` → project root
+- `#/` → `types/`
 
 ## Key Data Flow
 
-1. RSS feeds are parsed by `module/rss/` to extract torrent information
-2. Torrent names are analyzed by `module/parser/analyser/` to extract anime metadata
-3. Downloads are managed via `module/downloader/` (qBittorrent API)
-4. Files are organized by `module/manager/` into standard directory structure
-5. Background tasks run in `module/core/sub_thread.py` to avoid blocking
+1. RSS feeds parsed by `module/rss/` → extract torrent info
+2. Torrent names analyzed by `module/parser/` → extract anime metadata (regex + TMDB + optional OpenAI)
+3. Downloads managed via `module/downloader/` → qBittorrent API integration
+4. Files organized by `module/manager/` → rename to Plex/Jellyfin-compatible structure
+5. Background threads run in `module/core/sub_thread.py` — four threads with configurable intervals
+
+## Database Migrations
+
+Schema migrations tracked via `schema_version` table in SQLite (`data/data.db`). To add a migration:
+
+1. Increment `CURRENT_SCHEMA_VERSION` in `backend/src/module/database/combine.py`
+2. Append to `MIGRATIONS` list: `(version, "description", ["SQL statements"])`
+3. Migrations run automatically on startup via `run_migrations()`
+
+Each migration should be idempotent (check if column exists before altering).
+
+## Testing
+
+### Backend Tests
+- **Location**: `backend/src/test/`
+- **Framework**: pytest + pytest-asyncio (auto mode) + pytest-mock
+- **Fixtures** (`conftest.py`): In-memory SQLite database, async mock downloader, auth bypass client
+- **E2E tests**: Marked with `@pytest.mark.e2e`, require Docker
+
+### Frontend Tests
+- **Type check**: `pnpm test:build` (runs `vue-tsc --noEmit`)
+- **Unit tests**: Vitest + Vue Test Utils + Happy DOM
 
 ## Code Style
 
-- Python: Black (88 char lines), Ruff linter (E, F, I rules), target Python 3.10+
-- TypeScript: ESLint + Prettier
-- Run formatters before committing
+- **Python**: Black (88 char), Ruff (E, F, I rules; ignores E501, F401), target Python 3.13
+- **TypeScript**: ESLint + Prettier, strict mode
+- **CSS**: UnoCSS with Tailwind preset + scoped component styles with CSS variables
+- **Run formatters before committing**
 
 ## Git Branching
 
@@ -127,31 +234,26 @@ webui/src/
 - Bug fixes → PR to current released version's `-dev` branch
 - New features → PR to next version's `-dev` branch
 
-## Releasing a Beta Version
+## Releasing
 
+### Beta/Alpha Release
 1. Update version in `backend/pyproject.toml`
-2. Update `CHANGELOG.md` with the new version heading
-3. Commit and push to the dev branch
-4. Create and push a tag with the version name (e.g., `3.2.0-beta.4`):
-   ```bash
-   git tag 3.2.0-beta.4
-   git push origin 3.2.0-beta.4
-   ```
-5. The CI/CD workflow (`.github/workflows/build.yml`) detects the tag contains "beta", uses the tag name as the VERSION string, generates `module/__version__.py`, and builds the Docker image
+2. Update `CHANGELOG.md`
+3. Commit and push to dev branch
+4. Create and push tag: `git tag 3.2.0-beta.4 && git push origin 3.2.0-beta.4`
+5. CI detects "beta"/"alpha" in tag → builds Docker image → pushes to Docker Hub + GHCR → creates GitHub pre-release
 
-The VERSION is injected at build time via CI — `module/__version__.py` does not exist in the repo. At runtime, `module/conf/config.py` imports it or falls back to `"DEV_VERSION"`.
+### Stable Release
+1. Create PR from dev branch to `main` with version in title
+2. Merge PR → CI auto-runs tests, builds multi-arch Docker images, creates GitHub release, sends Telegram notification
 
-## Database Migrations
-
-Schema migrations are tracked via a `schema_version` table in SQLite. To add a new migration:
-
-1. Increment `CURRENT_SCHEMA_VERSION` in `backend/src/module/database/combine.py`
-2. Append a new entry to the `MIGRATIONS` list: `(version, "description", ["SQL statements"])`
-3. Migrations run automatically on startup via `run_migrations()`
+VERSION is injected at build time — `module/__version__.py` does NOT exist in the repo. At runtime, `conf/config.py` imports it or falls back to `"DEV_VERSION"`.
 
 ## Notes
 
 - Documentation and comments are in Chinese
 - Uses SQLModel (hybrid Pydantic + SQLAlchemy ORM)
-- External integrations: qBittorrent API, TMDB API, OpenAI API
+- External integrations: qBittorrent API, TMDB API, OpenAI API, WebAuthn
 - Version tracked in `/config/version.info` (for cross-version upgrade detection)
+- Docker runs as non-root user (UID 911) with `tini` init system
+- MCP server available at `/mcp` for LLM tool integration
