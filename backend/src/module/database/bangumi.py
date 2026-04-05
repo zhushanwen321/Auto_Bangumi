@@ -489,6 +489,43 @@ class BangumiDatabase:
 
         return best_match
 
+    def match_torrent_with_pattern(
+        self, torrent_name: str
+    ) -> Optional[tuple[Bangumi, str]]:
+        """
+        匹配种子名称到 Bangumi，返回 (Bangumi, 匹配的 pattern)。
+
+        与 match_torrent() 逻辑相同，但额外返回匹配的具体 pattern 名称，
+        用于日志记录（区分 title_raw 和 alias）。
+
+        Returns:
+            (Bangumi, pattern) 如果匹配成功，pattern 是匹配的 title_raw 或 alias
+            None 如果未匹配
+        """
+        match_datas = self.search_all()
+        if not match_datas:
+            return None
+
+        best_match: Optional[Bangumi] = None
+        best_pattern: Optional[str] = None
+        best_match_len = 0
+
+        for bangumi in match_datas:
+            if bangumi.deleted:
+                continue
+
+            patterns = self.get_all_title_patterns(bangumi)
+            for pattern in patterns:
+                if pattern in torrent_name:
+                    if len(pattern) > best_match_len:
+                        best_match = bangumi
+                        best_pattern = pattern
+                        best_match_len = len(pattern)
+
+        if best_match is not None and best_pattern is not None:
+            return (best_match, best_pattern)
+        return None
+
     def not_complete(self) -> list[Bangumi]:
         condition = select(Bangumi).where(
             and_(Bangumi.eps_collect == false(), Bangumi.deleted == false())
