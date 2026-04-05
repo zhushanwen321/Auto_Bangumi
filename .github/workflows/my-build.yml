@@ -3,7 +3,7 @@ name: Fork Build
 on:
   push:
     branches:
-      - "lightmerge/**"
+      - "lightmerge"
 
 jobs:
   test:
