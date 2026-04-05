@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from module.conf import settings
 from module.database import Database
 from module.manager import TorrentManager
-from module.models import APIResponse, Bangumi, BangumiUpdate
+from module.models import APIResponse, Bangumi, BangumiUpdate, TorrentDetail, RecollectRequest, Torrent
 from module.parser.analyser.offset_detector import (
     OffsetSuggestion as DetectorSuggestion,
 )
@@ -16,6 +16,12 @@ from module.parser.analyser.tmdb_parser import tmdb_parser
 from module.security.api import UNAUTHORIZED, get_current_user
 
 from .response import u_response
+
+import logging
+
+from module.downloader import DownloadClient
+
+logger = logging.getLogger(__name__)
 
 
 class OffsetSuggestion(BaseModel):
@@ -379,5 +385,154 @@ async def set_weekday(bangumi_id: int, request: SetWeekdayRequest):
             "status": False,
             "msg_en": f"Bangumi {bangumi_id} not found.",
             "msg_zh": f"未找到番剧 {bangumi_id}。",
+        },
+    )
+
+
+@router.get(
+    path="/{bangumi_id}/torrents",
+    response_model=list[TorrentDetail],
+    dependencies=[Depends(get_current_user)],
+)
+async def get_bangumi_torrents(bangumi_id: int):
+    """Get all torrents for a bangumi with download status."""
+    with Database() as db:
+        torrents = db.torrent.search_by_bangumi_id(bangumi_id)
+        if not torrents:
+            return []
+
+    # Collect qb_hashes for non-empty
+    qb_hashes = {t.qb_hash for t in torrents if t.qb_hash}
+
+    # Query qBittorrent for real-time status
+    qb_status_map: dict[str, str] = {}
+    if qb_hashes:
+        try:
+            async with DownloadClient() as client:
+                qb_torrents = await client.get_torrent_info(
+                    status_filter="all", category="Bangumi"
+                )
+            for t in qb_torrents:
+                if t.get("hash") in qb_hashes:
+                    qb_status_map[t["hash"]] = t.get("state", "")
+        except Exception as e:
+            logger.warning("[API] Failed to query qBittorrent status: %s", e)
+
+    # Build response
+    downloading_states = {"uploading", "downloading", "stalledDL"}
+    result = []
+    for t in torrents:
+        if t.downloaded:
+            status = "downloaded"
+        elif t.qb_hash and t.qb_hash in qb_status_map:
+            if qb_status_map[t.qb_hash] in downloading_states:
+                status = "downloading"
+            else:
+                status = "not_downloaded"
+        else:
+            status = "not_downloaded"
+        result.append(
+            TorrentDetail(
+                id=t.id,
+                name=t.name,
+                url=t.url,
+                downloaded=t.downloaded,
+                status=status,
+            )
+        )
+    return result
+
+
+@router.post(
+    path="/{bangumi_id}/recollect",
+    response_model=APIResponse,
+    dependencies=[Depends(get_current_user)],
+)
+async def recollect_torrents(bangumi_id: int, request: RecollectRequest):
+    """Re-download selected torrents for a bangumi."""
+    with Database() as db:
+        # Validate all torrents belong to this bangumi
+        torrents = []
+        for tid in request.torrent_ids:
+            t = db.torrent.search(tid)
+            if t is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={
+                        "status": False,
+                        "msg_en": f"Torrent {tid} not found.",
+                        "msg_zh": f"种子 {tid} 不存在。",
+                    },
+                )
+            if t.bangumi_id != bangumi_id:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "status": False,
+                        "msg_en": "Torrent IDs do not belong to this bangumi.",
+                        "msg_zh": "种子 ID 不属于此番剧。",
+                    },
+                )
+            torrents.append(t)
+
+        if not torrents:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": False,
+                    "msg_en": "No valid torrents to recollect.",
+                    "msg_zh": "没有有效的种子可重新收集。",
+                },
+            )
+
+        # Get bangumi for save path config
+        bangumi = db.bangumi.search_id(bangumi_id)
+        if not bangumi:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "status": False,
+                    "msg_en": f"Bangumi {bangumi_id} not found.",
+                    "msg_zh": f"未找到番剧 {bangumi_id}。",
+                },
+            )
+
+    # Add torrents to download client
+    try:
+        async with DownloadClient() as client:
+            success = await client.add_torrent(torrents, bangumi)
+            if not success:
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "status": False,
+                        "msg_en": "Failed to add torrents to download client.",
+                        "msg_zh": "添加种子到下载客户端失败。",
+                    },
+                )
+
+        # Update torrent records - downloaded=True means "submitted to client"
+        with Database() as db:
+            for t in torrents:
+                t.downloaded = True
+            db.torrent.update_all(torrents)
+
+    except Exception as e:
+        logger.error("[API] Recollect failed: %s", e)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": False,
+                "msg_en": f"Recollect failed: {str(e)}",
+                "msg_zh": f"重新收集失败: {str(e)}",
+            },
+        )
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": True,
+            "msg_en": f"Successfully recollected {len(torrents)} torrents.",
+            "msg_zh": f"成功重新收集 {len(torrents)} 个种子。",
         },
     )
