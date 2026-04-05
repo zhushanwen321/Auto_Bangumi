@@ -504,3 +504,54 @@ class TestRefreshRssIntegration:
         report_text = "\n".join(call[0][0] for call in report_calls)
 
         assert "未订阅" in report_text
+
+
+# --- 向后兼容性测试 ---
+
+
+class TestBackwardCompatibility:
+    """验证原有方法未被破坏。"""
+
+    @pytest.fixture
+    def mock_engine(self):
+        """创建 mock 的 RSSEngine。"""
+        with patch("module.rss.engine.Database.__init__", return_value=None):
+            from module.rss.engine import RSSEngine
+
+            engine = RSSEngine.__new__(RSSEngine)
+            engine._filter_cache = {}
+            engine.bangumi = MagicMock()
+            return engine
+
+    def test_original_match_torrent_still_works(self, mock_engine):
+        """原有 match_torrent 方法应保持原有行为。"""
+        bangumi = make_bangumi(id=1, official_title="Test", filter="")
+        mock_engine.bangumi.match_torrent.return_value = bangumi
+
+        torrent = make_torrent("[G] Test 第01话")
+        result = mock_engine.match_torrent(torrent)
+
+        assert result is bangumi
+
+    def test_original_match_torrent_returns_none(self, mock_engine):
+        """原有 match_torrent 在无匹配时返回 None。"""
+        mock_engine.bangumi.match_torrent.return_value = None
+
+        torrent = make_torrent("[G] Unknown 第01话")
+        result = mock_engine.match_torrent(torrent)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_original_pull_rss_with_status_still_works(self, mock_engine):
+        """原有 _pull_rss_with_status 方法应保持原有行为。"""
+        mock_engine.torrent = MagicMock()
+
+        rss_item = RSSItem(id=1, name="Test", url="https://example.com/rss")
+        torrents = [make_torrent("A")]
+
+        with patch.object(mock_engine, "_get_torrents", return_value=torrents):
+            mock_engine.torrent.check_new.return_value = torrents
+            result = await mock_engine._pull_rss_with_status(rss_item)
+
+        assert result == (torrents, None)
