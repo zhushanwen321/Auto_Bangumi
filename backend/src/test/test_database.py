@@ -586,15 +586,22 @@ def test_match_list_with_aliases(db_session):
 
 def test_torrent_search_by_bangumi_id(db_session):
     """Test searching torrents by bangumi_id."""
+    # Create parent Bangumi records to satisfy FK constraint
+    bangumi_db = BangumiDatabase(db_session)
+    b1 = Bangumi(official_title="Anime A", season=1, save_path="/tmp/a")
+    b2 = Bangumi(official_title="Anime B", season=1, save_path="/tmp/b")
+    bangumi_db.add(b1)
+    bangumi_db.add(b2)
+
     db = TorrentDatabase(db_session)
-    t1 = Torrent(name="Test 1", url="https://example.com/1", bangumi_id=1)
-    t2 = Torrent(name="Test 2", url="https://example.com/2", bangumi_id=1)
-    t3 = Torrent(name="Test 3", url="https://example.com/3", bangumi_id=2)
+    t1 = Torrent(name="Test 1", url="https://example.com/1", bangumi_id=b1.id)
+    t2 = Torrent(name="Test 2", url="https://example.com/2", bangumi_id=b1.id)
+    t3 = Torrent(name="Test 3", url="https://example.com/3", bangumi_id=b2.id)
     db.add_all([t1, t2, t3])
 
-    result = db.search_by_bangumi_id(1)
+    result = db.search_by_bangumi_id(b1.id)
     assert len(result) == 2
-    assert all(t.bangumi_id == 1 for t in result)
+    assert all(t.bangumi_id == b1.id for t in result)
 
 
 def test_torrent_search_by_bangumi_id_empty(db_session):
