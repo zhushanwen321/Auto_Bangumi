@@ -207,3 +207,105 @@ class TestMatchTorrentWithDetails:
         result_bangumi, match_result = mock_engine.match_torrent_with_details(torrent)
 
         assert match_result.download_action == "filtered"
+
+
+# --- 测试 _pull_rss_with_torrent_counts ---
+
+
+class TestPullRssWithTorrentCounts:
+    """_pull_rss_with_torrent_counts 方法测试。
+
+    验证方法正确返回种子总数、新增数和错误信息。
+    """
+
+    @pytest.fixture
+    def mock_engine(self):
+        """创建 mock 的 RSSEngine。"""
+        with patch("module.rss.engine.Database.__init__", return_value=None):
+            from module.rss.engine import RSSEngine
+
+            engine = RSSEngine.__new__(RSSEngine)
+            engine._filter_cache = {}
+            engine.bangumi = MagicMock()
+            engine.torrent = MagicMock()
+            return engine
+
+    @pytest.mark.asyncio
+    async def test_returns_total_and_new_counts(self, mock_engine):
+        """正常情况下返回种子总数和新增数。"""
+        rss_item = RSSItem(id=1, name="Test RSS", url="https://example.com/rss")
+        all_torrents = [
+            make_torrent("A 第01话"),
+            make_torrent("B 第02话"),
+            make_torrent("C 第03话"),
+        ]
+        new_torrents = [all_torrents[0], all_torrents[2]]
+
+        with patch.object(
+            mock_engine, "_get_torrents", return_value=all_torrents
+        ):
+            mock_engine.torrent.check_new.return_value = new_torrents
+
+            result = await mock_engine._pull_rss_with_torrent_counts(rss_item)
+
+        assert result == (new_torrents, 3, 2, None)
+
+    @pytest.mark.asyncio
+    async def test_error_case_returns_empty_with_error(self, mock_engine):
+        """获取种子异常时返回空列表和错误信息。"""
+        rss_item = RSSItem(id=1, name="Test RSS", url="https://example.com/rss")
+
+        with patch.object(
+            mock_engine,
+            "_get_torrents",
+            side_effect=Exception("Connection refused"),
+        ):
+            result = await mock_engine._pull_rss_with_torrent_counts(rss_item)
+
+        new_torrents, total, new, error = result
+        assert new_torrents == []
+        assert total == 0
+        assert new == 0
+        assert "Connection refused" in error
+
+    @pytest.mark.asyncio
+    async def test_no_torrents_returns_zero_counts(self, mock_engine):
+        """RSS 源没有任何种子时返回零计数。"""
+        rss_item = RSSItem(id=1, name="Empty RSS", url="https://example.com/empty")
+
+        with patch.object(mock_engine, "_get_torrents", return_value=[]):
+            mock_engine.torrent.check_new.return_value = []
+
+            result = await mock_engine._pull_rss_with_torrent_counts(rss_item)
+
+        assert result == ([], 0, 0, None)
+
+    @pytest.mark.asyncio
+    async def test_all_torrents_are_new(self, mock_engine):
+        """所有种子都是新增的。"""
+        rss_item = RSSItem(id=1, name="Test", url="https://example.com/rss")
+        all_torrents = [make_torrent("A"), make_torrent("B")]
+
+        with patch.object(
+            mock_engine, "_get_torrents", return_value=all_torrents
+        ):
+            mock_engine.torrent.check_new.return_value = all_torrents
+
+            result = await mock_engine._pull_rss_with_torrent_counts(rss_item)
+
+        assert result == (all_torrents, 2, 2, None)
+
+    @pytest.mark.asyncio
+    async def test_no_new_torrents(self, mock_engine):
+        """所有种子都已存在。"""
+        rss_item = RSSItem(id=1, name="Test", url="https://example.com/rss")
+        all_torrents = [make_torrent("A"), make_torrent("B")]
+
+        with patch.object(
+            mock_engine, "_get_torrents", return_value=all_torrents
+        ):
+            mock_engine.torrent.check_new.return_value = []
+
+            result = await mock_engine._pull_rss_with_torrent_counts(rss_item)
+
+        assert result == ([], 2, 0, None)

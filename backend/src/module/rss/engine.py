@@ -111,6 +111,22 @@ class RSSEngine(Database):
             logger.warning(f"[Engine] Failed to fetch RSS {rss_item.name}: {e}")
             return [], str(e)
 
+    async def _pull_rss_with_torrent_counts(
+        self, rss_item: RSSItem
+    ) -> tuple[list[Torrent], int, int, Optional[str]]:
+        """拉取 RSS 种子并返回计数信息。
+
+        Returns:
+            (new_torrents, total_count, new_count, error_message)
+        """
+        try:
+            all_torrents = await self._get_torrents(rss_item)
+            new_torrents = self.torrent.check_new(all_torrents)
+            return new_torrents, len(all_torrents), len(new_torrents), None
+        except Exception as e:
+            logger.warning(f"[Engine] Failed to fetch RSS {rss_item.name}: {e}")
+            return [], 0, 0, str(e)
+
     def _get_filter_pattern(self, filter_str: str) -> re.Pattern:
         if filter_str not in self._filter_cache:
             raw_pattern = filter_str.replace(",", "|")
