@@ -70,6 +70,13 @@ class TorrentDatabase:
         )
         return list(result.scalars().all())
 
+    def search_by_bangumi_id(self, bangumi_id: int) -> list[Torrent]:
+        """Find all torrents associated with a bangumi."""
+        result = self.session.execute(
+            select(Torrent).where(Torrent.bangumi_id == bangumi_id)
+        )
+        return list(result.scalars().all())
+
     def delete_by_bangumi_id(self, bangumi_id: int) -> int:
         """Delete all torrent records associated with a bangumi.
 

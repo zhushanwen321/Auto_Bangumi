@@ -579,3 +579,26 @@ def test_match_list_with_aliases(db_session):
     unmatched = db.match_list(torrents, "rss2")
     assert len(unmatched) == 1
     assert unmatched[0].name == "[OtherGroup] Different Anime - 01.mkv"
+
+
+# --- TorrentDatabase search_by_bangumi_id ---
+
+
+def test_torrent_search_by_bangumi_id(db_session):
+    """Test searching torrents by bangumi_id."""
+    db = TorrentDatabase(db_session)
+    t1 = Torrent(name="Test 1", url="https://example.com/1", bangumi_id=1)
+    t2 = Torrent(name="Test 2", url="https://example.com/2", bangumi_id=1)
+    t3 = Torrent(name="Test 3", url="https://example.com/3", bangumi_id=2)
+    db.add_all([t1, t2, t3])
+
+    result = db.search_by_bangumi_id(1)
+    assert len(result) == 2
+    assert all(t.bangumi_id == 1 for t in result)
+
+
+def test_torrent_search_by_bangumi_id_empty(db_session):
+    """Test searching by non-existent bangumi_id returns empty list."""
+    db = TorrentDatabase(db_session)
+    result = db.search_by_bangumi_id(999)
+    assert result == []
