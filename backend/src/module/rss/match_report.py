@@ -93,3 +93,26 @@ class MatchCollector:
             raise KeyError(
                 f"RSS id={rss_id} 尚未通过 start_rss() 注册"
             )
+
+    def generate_report(self) -> str:
+        """生成完整的日志报告。
+
+        Returns:
+            结构化的多行文本报告。
+        """
+        lines: list[str] = ["========== RSS 刷新报告 =========="]
+        lines.append(f"处理了 {len(self.rss_results)} 个 RSS 源")
+
+        for rss_id in self.rss_results:
+            rss = self.rss_results[rss_id]
+            lines.append("")
+            lines.append(f"--- 源: {rss.rss_name} ---")
+            lines.append(
+                f"获取 {rss.total_torrents} 个种子，"
+                f"其中 {rss.new_torrents} 个新种子"
+            )
+            # 各分类的详细输出将在 Task 1.4 中实现
+
+        # 汇总行将在 Task 1.5 中实现
+        lines.append("=================================")
+        return "\n".join(lines)

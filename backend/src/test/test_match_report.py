@@ -262,3 +262,41 @@ class TestMatchCollectorLifecycle:
         assert collector.rss_results[2].total_torrents == 80
         assert len(collector.rss_results[1].matches) == 1
         assert len(collector.rss_results[2].matches) == 1
+
+
+class TestGenerateReportEmpty:
+    """空报告和报告框架测试。"""
+
+    def test_empty_report(self):
+        """没有处理任何 RSS 源时，生成空报告。"""
+        collector = MatchCollector()
+        report = collector.generate_report()
+
+        assert "RSS 刷新报告" in report
+        assert "处理了 0 个 RSS 源" in report
+
+    def test_report_has_header_and_footer(self):
+        """报告应包含头部和尾部边界线。"""
+        collector = MatchCollector()
+        report = collector.generate_report()
+
+        assert report.startswith("========== RSS 刷新报告 ==========\n")
+        assert report.rstrip().endswith("=================================")
+
+    def test_report_with_no_matches(self):
+        """RSS 源没有新种子时的报告。"""
+        collector = MatchCollector()
+
+        class FakeRSS:
+            id = 1
+            name = "Empty Feed"
+
+        collector.start_rss(FakeRSS())
+        collector.set_torrent_counts(1, total=10, new=0)
+        collector.finish_rss(1)
+
+        report = collector.generate_report()
+
+        assert "处理了 1 个 RSS 源" in report
+        assert "Empty Feed" in report
+        assert "获取 10 个种子，其中 0 个新种子" in report
