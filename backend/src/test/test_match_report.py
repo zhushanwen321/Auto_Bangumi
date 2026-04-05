@@ -447,3 +447,115 @@ class TestGenerateReportMatches:
         assert report.count("葬送的芙莉莲 (S1):") == 1
         assert "[G] 芙莉莲 第12话 [1080p]" in report
         assert "[G] 芙莉莲 第11话 [1080p]" in report
+
+
+class TestGenerateReportFullScenario:
+    """完整的报告生成端到端测试。"""
+
+    def test_full_report_format(self):
+        """完整报告应匹配预期格式。"""
+        collector = MatchCollector()
+
+        class FakeMikan:
+            id = 1
+            name = "Mikan Project"
+
+        class FakeDMHY:
+            id = 2
+            name = "DMHY"
+
+        # RSS 1: Mikan
+        collector.start_rss(FakeMikan())
+        collector.set_torrent_counts(1, total=50, new=4)
+        collector.record_match(1, MatchResult(
+            torrent_name="[Group] 推しの子 第13话 [1080p HEVC]",
+            matched_bangumi="推しの子 (S1)",
+            download_action="downloaded",
+            matched_pattern="推しの子",
+        ))
+        collector.record_match(1, MatchResult(
+            torrent_name="[Group] 推し之子 第13话 [720p]",
+            matched_bangumi="推しの子 (S1)",
+            download_action="filtered",
+            matched_pattern="推し之子",
+            filter_reason="种子名称不匹配 filter 正则 /1080p/",
+        ))
+        collector.record_match(1, MatchResult(
+            torrent_name="[Group] 未知的动漫 第01话",
+            matched_bangumi=None,
+            download_action="not_matched",
+        ))
+        collector.record_match(1, MatchResult(
+            torrent_name="[Group] 新番测试 第01话",
+            matched_bangumi="新番测试 (S1)",
+            download_action="not_added",
+            matched_pattern="新番测试",
+        ))
+        collector.finish_rss(1)
+
+        # RSS 2: DMHY (只有 downloaded)
+        collector.start_rss(FakeDMHY())
+        collector.set_torrent_counts(2, total=30, new=1)
+        collector.record_match(2, MatchResult(
+            torrent_name="[Sub] 芙莉莲 第12话 [1080p]",
+            matched_bangumi="葬送的芙莉莲 (S1)",
+            download_action="downloaded",
+            matched_pattern="芙莉莲",
+        ))
+        collector.finish_rss(2)
+
+        report = collector.generate_report()
+
+        # 全局结构
+        assert report.startswith("========== RSS 刷新报告 ==========\n")
+        assert report.rstrip().endswith("=================================")
+        assert "处理了 2 个 RSS 源" in report
+
+        # RSS 1 内容
+        assert "--- 源: Mikan Project ---" in report
+        assert "获取 50 个种子，其中 4 个新种子" in report
+
+        # RSS 2 内容
+        assert "--- 源: DMHY ---" in report
+        assert "获取 30 个种子，其中 1 个新种子" in report
+
+        # 汇总
+        assert "汇总: 5 个新种子 -> 2 个下载, 1 个过滤, 1 个未匹配, 1 个未订阅" in report
+
+    def test_report_without_summary_when_no_new_torrents(self):
+        """没有新种子时不应该有汇总行。"""
+        collector = MatchCollector()
+
+        class FakeRSS:
+            id = 1
+            name = "Empty"
+
+        collector.start_rss(FakeRSS())
+        collector.set_torrent_counts(1, total=10, new=0)
+        collector.finish_rss(1)
+
+        report = collector.generate_report()
+        assert "汇总" not in report
+
+    def test_collector_can_be_reused(self):
+        """同一 collector 实例可以多次调用 generate_report。"""
+        collector = MatchCollector()
+
+        class FakeRSS:
+            id = 1
+            name = "Test"
+
+        collector.start_rss(FakeRSS())
+        collector.set_torrent_counts(1, total=5, new=1)
+        collector.record_match(1, MatchResult(
+            torrent_name="A",
+            matched_bangumi="B",
+            download_action="downloaded",
+            matched_pattern="B",
+        ))
+        collector.finish_rss(1)
+
+        report1 = collector.generate_report()
+        report2 = collector.generate_report()
+
+        assert report1 == report2
