@@ -4,7 +4,7 @@ from dataclasses import fields
 
 import pytest
 
-from module.rss.match_report import MatchResult, RSSResult
+from module.rss.match_report import MatchCollector, MatchResult, RSSResult
 
 
 class TestMatchResult:
@@ -107,3 +107,158 @@ class TestRSSResult:
             "new_torrents",
             "matches",
         }
+
+
+class TestMatchCollectorLifecycle:
+    """MatchCollector 生命周期方法测试。"""
+
+    def test_start_rss_creates_entry(self):
+        """start_rss 应该在 rss_results 中创建一个 RSSResult 条目。"""
+        collector = MatchCollector()
+
+        class FakeRSS:
+            id = 1
+            name = "Mikan Project"
+
+        collector.start_rss(FakeRSS())
+
+        assert 1 in collector.rss_results
+        assert collector.rss_results[1].rss_name == "Mikan Project"
+        assert collector.rss_results[1].rss_id == 1
+
+    def test_start_rss_idempotent(self):
+        """重复调用 start_rss 不会覆盖已有结果（防止意外丢失数据）。"""
+        collector = MatchCollector()
+
+        class FakeRSS:
+            id = 1
+            name = "Mikan"
+
+        collector.start_rss(FakeRSS())
+        collector.set_torrent_counts(1, 50, 10)
+        collector.start_rss(FakeRSS())  # 重复调用
+
+        # 计数不应被重置
+        assert collector.rss_results[1].total_torrents == 50
+        assert collector.rss_results[1].new_torrents == 10
+
+    def test_set_torrent_counts(self):
+        """set_torrent_counts 应该正确设置种子计数。"""
+        collector = MatchCollector()
+
+        class FakeRSS:
+            id = 1
+            name = "Test"
+
+        collector.start_rss(FakeRSS())
+        collector.set_torrent_counts(1, total=50, new=12)
+
+        result = collector.rss_results[1]
+        assert result.total_torrents == 50
+        assert result.new_torrents == 12
+
+    def test_set_torrent_counts_unknown_rss_id_raises(self):
+        """对不存在的 rss_id 调用 set_torrent_counts 应该抛出 KeyError。"""
+        collector = MatchCollector()
+
+        with pytest.raises(KeyError):
+            collector.set_torrent_counts(999, total=10, new=5)
+
+    def test_record_match_downloaded(self):
+        """record_match 应该记录一个下载成功的匹配结果。"""
+        collector = MatchCollector()
+
+        class FakeRSS:
+            id = 1
+            name = "Test"
+
+        collector.start_rss(FakeRSS())
+
+        match = MatchResult(
+            torrent_name="[Group] Test 第01话",
+            matched_bangumi="Test (S1)",
+            download_action="downloaded",
+            matched_pattern="Test",
+        )
+        collector.record_match(1, match)
+
+        assert len(collector.rss_results[1].matches) == 1
+        assert collector.rss_results[1].matches[0].download_action == "downloaded"
+
+    def test_record_match_multiple(self):
+        """record_match 应该能记录多个匹配结果。"""
+        collector = MatchCollector()
+
+        class FakeRSS:
+            id = 1
+            name = "Test"
+
+        collector.start_rss(FakeRSS())
+
+        for i in range(3):
+            collector.record_match(1, MatchResult(
+                torrent_name=f"Torrent {i}",
+                matched_bangumi=None,
+                download_action="not_matched",
+            ))
+
+        assert len(collector.rss_results[1].matches) == 3
+
+    def test_record_match_unknown_rss_id_raises(self):
+        """对不存在的 rss_id 调用 record_match 应该抛出 KeyError。"""
+        collector = MatchCollector()
+
+        with pytest.raises(KeyError):
+            collector.record_match(999, MatchResult(
+                torrent_name="test",
+                matched_bangumi=None,
+                download_action="not_matched",
+            ))
+
+    def test_finish_rss_marks_completion(self):
+        """finish_rss 应该标记 RSS 处理完成（不抛异常即可）。"""
+        collector = MatchCollector()
+
+        class FakeRSS:
+            id = 1
+            name = "Test"
+
+        collector.start_rss(FakeRSS())
+        collector.finish_rss(1)  # 不应抛异常
+
+    def test_finish_rss_unknown_id_raises(self):
+        """对不存在的 rss_id 调用 finish_rss 应该抛出 KeyError。"""
+        collector = MatchCollector()
+
+        with pytest.raises(KeyError):
+            collector.finish_rss(999)
+
+    def test_multiple_rss_sources(self):
+        """应该能同时跟踪多个 RSS 源。"""
+        collector = MatchCollector()
+
+        class FakeRSS1:
+            id = 1
+            name = "Mikan"
+
+        class FakeRSS2:
+            id = 2
+            name = "DMHY"
+
+        collector.start_rss(FakeRSS1())
+        collector.start_rss(FakeRSS2())
+
+        collector.set_torrent_counts(1, 100, 20)
+        collector.set_torrent_counts(2, 80, 10)
+
+        collector.record_match(1, MatchResult(
+            torrent_name="A", matched_bangumi="B", download_action="downloaded",
+        ))
+        collector.record_match(2, MatchResult(
+            torrent_name="C", matched_bangumi=None, download_action="not_matched",
+        ))
+
+        assert collector.rss_results[1].total_torrents == 100
+        assert collector.rss_results[2].total_torrents == 80
+        assert len(collector.rss_results[1].matches) == 1
+        assert len(collector.rss_results[2].matches) == 1
