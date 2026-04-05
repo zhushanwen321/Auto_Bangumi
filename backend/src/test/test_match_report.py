@@ -300,3 +300,150 @@ class TestGenerateReportEmpty:
         assert "处理了 1 个 RSS 源" in report
         assert "Empty Feed" in report
         assert "获取 10 个种子，其中 0 个新种子" in report
+
+
+class TestGenerateReportMatches:
+    """匹配详情报告测试。"""
+
+    def _build_collector_with_all_actions(self) -> MatchCollector:
+        """构造一个包含四种 action 的完整 collector。"""
+        collector = MatchCollector()
+
+        class FakeRSS:
+            id = 1
+            name = "Mikan Project"
+
+        collector.start_rss(FakeRSS())
+        collector.set_torrent_counts(1, total=50, new=12)
+
+        # downloaded
+        collector.record_match(1, MatchResult(
+            torrent_name="[Group] 推しの子 第13话 [1080p HEVC]",
+            matched_bangumi="推しの子 (S1)",
+            download_action="downloaded",
+            matched_pattern="推しの子",
+        ))
+
+        # filtered
+        collector.record_match(1, MatchResult(
+            torrent_name="[Group] 推し之子 第13话 [720p]",
+            matched_bangumi="推しの子 (S1)",
+            download_action="filtered",
+            matched_pattern="推し之子",
+            filter_reason="种子名称不匹配 filter 正则 /1080p/",
+        ))
+
+        # not_matched
+        collector.record_match(1, MatchResult(
+            torrent_name="[Group] 未知的动漫 第01话",
+            matched_bangumi=None,
+            download_action="not_matched",
+        ))
+
+        # not_added
+        collector.record_match(1, MatchResult(
+            torrent_name="[Group] 新番测试 第01话",
+            matched_bangumi="新番测试 (S1)",
+            download_action="not_added",
+            matched_pattern="新番测试",
+        ))
+
+        collector.finish_rss(1)
+        return collector
+
+    def test_downloaded_section(self):
+        """报告应包含 [下载] 分类，显示成功下载的种子。"""
+        collector = self._build_collector_with_all_actions()
+        report = collector.generate_report()
+
+        assert "[下载] 成功下载 (1 个):" in report
+        assert "推しの子 (S1):" in report
+        assert "[Group] 推しの子 第13话 [1080p HEVC]" in report
+        assert '匹配: title_raw="推しの子"' in report
+
+    def test_filtered_section(self):
+        """报告应包含 [过滤] 分类，显示被过滤的种子及原因。"""
+        collector = self._build_collector_with_all_actions()
+        report = collector.generate_report()
+
+        assert "[过滤] 匹配但被过滤 (1 个):" in report
+        assert "推しの子 (S1):" in report
+        assert "[Group] 推し之子 第13话 [720p]" in report
+        assert '匹配: alias="推し之子"' in report
+        assert "种子名称不匹配 filter 正则 /1080p/" in report
+
+    def test_not_matched_section(self):
+        """报告应包含 [未匹配] 分类，显示未匹配任何番剧的种子。"""
+        collector = self._build_collector_with_all_actions()
+        report = collector.generate_report()
+
+        assert "[未匹配] 未匹配任何 Bangumi (1 个):" in report
+        assert "[Group] 未知的动漫 第01话" in report
+
+    def test_not_added_section(self):
+        """报告应包含 [未订阅] 分类，显示匹配但未添加下载的种子。"""
+        collector = self._build_collector_with_all_actions()
+        report = collector.generate_report()
+
+        assert "[未订阅] 已匹配但未添加下载 (1 个):" in report
+        assert "新番测试 (S1):" in report
+        assert "[Group] 新番测试 第01话" in report
+
+    def test_empty_category_not_shown(self):
+        """某个分类为空时不应出现在报告中。"""
+        collector = MatchCollector()
+
+        class FakeRSS:
+            id = 1
+            name = "Test"
+
+        collector.start_rss(FakeRSS())
+        collector.set_torrent_counts(1, total=5, new=1)
+        # 只有 downloaded，没有其他分类
+        collector.record_match(1, MatchResult(
+            torrent_name="[G] A 第01话",
+            matched_bangumi="A (S1)",
+            download_action="downloaded",
+            matched_pattern="A",
+        ))
+        collector.finish_rss(1)
+
+        report = collector.generate_report()
+
+        assert "[下载] 成功下载 (1 个):" in report
+        assert "[过滤]" not in report
+        assert "[未匹配]" not in report
+        assert "[未订阅]" not in report
+
+    def test_multiple_downloads_grouped_by_bangumi(self):
+        """同一番剧的多个下载种子应归组显示。"""
+        collector = MatchCollector()
+
+        class FakeRSS:
+            id = 1
+            name = "Test"
+
+        collector.start_rss(FakeRSS())
+        collector.set_torrent_counts(1, total=10, new=2)
+
+        collector.record_match(1, MatchResult(
+            torrent_name="[G] 芙莉莲 第12话 [1080p]",
+            matched_bangumi="葬送的芙莉莲 (S1)",
+            download_action="downloaded",
+            matched_pattern="芙莉莲",
+        ))
+        collector.record_match(1, MatchResult(
+            torrent_name="[G] 芙莉莲 第11话 [1080p]",
+            matched_bangumi="葬送的芙莉莲 (S1)",
+            download_action="downloaded",
+            matched_pattern="芙莉莲",
+        ))
+
+        collector.finish_rss(1)
+        report = collector.generate_report()
+
+        # "葬送的芙莉莲 (S1)" 只出现一次作为分组标题
+        # 两话都应出现
+        assert report.count("葬送的芙莉莲 (S1):") == 1
+        assert "[G] 芙莉莲 第12话 [1080p]" in report
+        assert "[G] 芙莉莲 第11话 [1080p]" in report

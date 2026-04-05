@@ -103,6 +103,11 @@ class MatchCollector:
         lines: list[str] = ["========== RSS 刷新报告 =========="]
         lines.append(f"处理了 {len(self.rss_results)} 个 RSS 源")
 
+        total_downloaded = 0
+        total_filtered = 0
+        total_not_matched = 0
+        total_not_added = 0
+
         for rss_id in self.rss_results:
             rss = self.rss_results[rss_id]
             lines.append("")
@@ -111,8 +116,93 @@ class MatchCollector:
                 f"获取 {rss.total_torrents} 个种子，"
                 f"其中 {rss.new_torrents} 个新种子"
             )
-            # 各分类的详细输出将在 Task 1.4 中实现
 
-        # 汇总行将在 Task 1.5 中实现
+            # 按四种 action 分组
+            downloaded = [m for m in rss.matches if m.download_action == "downloaded"]
+            filtered = [m for m in rss.matches if m.download_action == "filtered"]
+            not_matched = [m for m in rss.matches if m.download_action == "not_matched"]
+            not_added = [m for m in rss.matches if m.download_action == "not_added"]
+
+            total_downloaded += len(downloaded)
+            total_filtered += len(filtered)
+            total_not_matched += len(not_matched)
+            total_not_added += len(not_added)
+
+            self._append_downloaded_section(lines, downloaded)
+            self._append_filtered_section(lines, filtered)
+            self._append_not_matched_section(lines, not_matched)
+            self._append_not_added_section(lines, not_added)
+
+        # 汇总
+        total_new = total_downloaded + total_filtered + total_not_matched + total_not_added
+        if total_new > 0:
+            lines.append("")
+            lines.append(
+                f"汇总: {total_new} 个新种子 -> "
+                f"{total_downloaded} 个下载, "
+                f"{total_filtered} 个过滤, "
+                f"{total_not_matched} 个未匹配, "
+                f"{total_not_added} 个未订阅"
+            )
         lines.append("=================================")
         return "\n".join(lines)
+
+    @staticmethod
+    def _group_by_bangumi(matches: list[MatchResult]) -> dict[str, list[MatchResult]]:
+        """按 matched_bangumi 分组，保持插入顺序。"""
+        groups: dict[str, list[MatchResult]] = {}
+        for m in matches:
+            key = m.matched_bangumi or "__none__"
+            groups.setdefault(key, []).append(m)
+        return groups
+
+    def _append_downloaded_section(
+        self, lines: list[str], matches: list[MatchResult]
+    ) -> None:
+        """追加 [下载] 分类。"""
+        if not matches:
+            return
+        lines.append(f"\n[下载] 成功下载 ({len(matches)} 个):")
+        for bangumi_name, group in self._group_by_bangumi(matches).items():
+            lines.append(f"  {bangumi_name}:")
+            for m in group:
+                lines.append(f"    + {m.torrent_name}")
+                lines.append(f"      匹配: title_raw=\"{m.matched_pattern}\"")
+
+    def _append_filtered_section(
+        self, lines: list[str], matches: list[MatchResult]
+    ) -> None:
+        """追加 [过滤] 分类。"""
+        if not matches:
+            return
+        lines.append(f"\n[过滤] 匹配但被过滤 ({len(matches)} 个):")
+        for bangumi_name, group in self._group_by_bangumi(matches).items():
+            lines.append(f"  {bangumi_name}:")
+            for m in group:
+                lines.append(f"    - {m.torrent_name}")
+                lines.append(f"      匹配: alias=\"{m.matched_pattern}\"")
+                if m.filter_reason:
+                    lines.append(f"      原因: {m.filter_reason}")
+
+    def _append_not_matched_section(
+        self, lines: list[str], matches: list[MatchResult]
+    ) -> None:
+        """追加 [未匹配] 分类。"""
+        if not matches:
+            return
+        lines.append(f"\n[未匹配] 未匹配任何 Bangumi ({len(matches)} 个):")
+        for m in matches:
+            lines.append(f"    - {m.torrent_name}")
+
+    def _append_not_added_section(
+        self, lines: list[str], matches: list[MatchResult]
+    ) -> None:
+        """追加 [未订阅] 分类。"""
+        if not matches:
+            return
+        lines.append(f"\n[未订阅] 已匹配但未添加下载 ({len(matches)} 个):")
+        for bangumi_name, group in self._group_by_bangumi(matches).items():
+            lines.append(f"  {bangumi_name}:")
+            for m in group:
+                lines.append(f"    x {m.torrent_name}")
+                lines.append(f"      原因: Bangumi 的 added=False")
