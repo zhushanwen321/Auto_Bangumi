@@ -2,6 +2,7 @@
 import { CheckOne, Close, Copy, Down, ErrorPicture, Right } from '@icon-park/vue-next';
 import { NDynamicTags, NSpin, useMessage } from 'naive-ui';
 import type { BangumiRule, DetectOffsetResponse } from '#/bangumi';
+import AbEpisodeManager from './ab-episode-manager.vue';
 
 const emit = defineEmits<{
   (e: 'apply', rule: BangumiRule): void;
@@ -14,6 +15,9 @@ const emit = defineEmits<{
     opts: { id: number; deleteFile: boolean }
   ): void;
 }>();
+
+const { episodeManager } = storeToRefs(useBangumiStore());
+const { openEpisodeManager } = useBangumiStore();
 
 const { t } = useMyI18n();
 
@@ -182,6 +186,10 @@ function emitArchive() {
 
 function emitUnarchive() {
   emit('unarchive', rule.value.id);
+}
+
+function emitEpisodeManager() {
+  openEpisodeManager(rule.value);
 }
 </script>
 
@@ -384,6 +392,12 @@ function emitUnarchive() {
               </ab-button>
               <ab-button
                 size="small"
+                @click="emitEpisodeManager"
+              >
+                {{ $t('episode_manager.title') }}
+              </ab-button>
+              <ab-button
+                size="small"
                 type="warn"
                 @click="showDeleteFileDialog"
               >
@@ -417,6 +431,12 @@ function emitUnarchive() {
         </Transition>
       </div>
     </Transition>
+
+    <!-- Episode Manager Modal -->
+    <AbEpisodeManager
+      v-model:show="episodeManager.show"
+      :bangumi="episodeManager.item"
+    />
   </Teleport>
 </template>
 

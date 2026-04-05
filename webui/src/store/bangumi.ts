@@ -14,6 +14,14 @@ export const useBangumiStore = defineStore('bangumi', () => {
     item: { ...ruleTemplate },
   });
 
+  const episodeManager = reactive<{
+    show: boolean;
+    item: BangumiRule;
+  }>({
+    show: false,
+    item: { ...ruleTemplate },
+  });
+
   // Computed: active bangumi (not deleted, not archived)
   const activeBangumi = computed(() =>
     bangumi.value.filter((b) => !b.deleted && !b.archived)
@@ -66,6 +74,12 @@ export const useBangumiStore = defineStore('bangumi', () => {
     editRule.item = data;
   }
 
+  function openEpisodeManager(data: BangumiRule) {
+    editRule.show = false;
+    episodeManager.show = true;
+    episodeManager.item = data;
+  }
+
   function ruleManage(
     type: 'disable' | 'delete',
     id: number,
@@ -99,6 +113,7 @@ export const useBangumiStore = defineStore('bangumi', () => {
     activeBangumi,
     archivedBangumi,
     editRule,
+    episodeManager,
 
     getAll,
     updateRule,
@@ -110,6 +125,7 @@ export const useBangumiStore = defineStore('bangumi', () => {
     unarchiveRule,
     refreshMetadata,
     openEditPopup,
+    openEpisodeManager,
     ruleManage,
     setWeekday,
   };
