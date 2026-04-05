@@ -3,5 +3,12 @@ from .config import Config
 from .passkey import Passkey, PasskeyCreate, PasskeyDelete, PasskeyList
 from .response import APIResponse, ResponseModel
 from .rss import RSSItem, RSSUpdate
-from .torrent import EpisodeFile, SubtitleFile, Torrent, TorrentUpdate
+from .torrent import (
+    EpisodeFile,
+    RecollectRequest,
+    SubtitleFile,
+    Torrent,
+    TorrentDetail,
+    TorrentUpdate,
+)
 from .user import User, UserLogin, UserUpdate

@@ -36,3 +36,17 @@ class SubtitleFile(BaseModel):
     episode: int | float = Field(None)
     language: str = Field(..., regex=r"(zh|zh-tw)")
     suffix: str = Field(..., regex=r"\.(ass|srt|ASS|SRT)$")
+
+
+class TorrentDetail(BaseModel):
+    """Torrent with combined download status from DB + qBittorrent."""
+    id: int
+    name: str
+    url: str
+    downloaded: bool
+    status: str  # "downloaded" | "downloading" | "not_downloaded"
+
+
+class RecollectRequest(BaseModel):
+    """Request body for recollecting torrents."""
+    torrent_ids: list[int]
