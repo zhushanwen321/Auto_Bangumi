@@ -104,3 +104,12 @@ export interface DetectOffsetResponse {
   suggestion: OffsetSuggestionDetail | null;
   tmdb_info: TMDBSummary | null;
 }
+
+/** Torrent detail with download status for episode manager */
+export interface TorrentDetail {
+  id: number
+  name: string
+  url: string
+  downloaded: boolean
+  status: 'downloaded' | 'downloading' | 'not_downloaded'
+}

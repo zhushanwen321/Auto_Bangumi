@@ -5,6 +5,7 @@ import type {
   DetectOffsetRequest,
   DetectOffsetResponse,
   OffsetSuggestion,
+  TorrentDetail,
 } from '#/bangumi';
 import type { ApiSuccess } from '#/api';
 
@@ -245,5 +246,29 @@ export const apiBangumi = {
       rss_link: bangumi.rss_link.split(','),
       air_weekday: bangumi.air_weekday ?? null,
     })) as BangumiRule[];
+  },
+
+  /**
+   * 获取番剧种子列表
+   * @param bangumiId - bangumi 的 id
+   */
+  async getTorrents(bangumiId: number) {
+    const { data } = await axios.get<TorrentDetail[]>(
+      `api/v1/bangumi/${bangumiId}/torrents`
+    );
+    return data;
+  },
+
+  /**
+   * 重新收集下载选中的种子
+   * @param bangumiId - bangumi 的 id
+   * @param torrentIds - 要重新下载的种子 ID 列表
+   */
+  async recollectTorrents(bangumiId: number, torrentIds: number[]) {
+    const { data } = await axios.post<ApiSuccess>(
+      `api/v1/bangumi/${bangumiId}/recollect`,
+      { torrent_ids: torrentIds }
+    );
+    return data;
   },
 };
