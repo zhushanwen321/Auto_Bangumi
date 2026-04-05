@@ -559,3 +559,133 @@ class TestGenerateReportFullScenario:
         report2 = collector.generate_report()
 
         assert report1 == report2
+
+
+class TestGenerateReportEdgeCases:
+    """报告生成的边界情况测试。"""
+
+    def test_special_characters_in_torrent_name(self):
+        """种子名称包含特殊字符时不应破坏报告格式。"""
+        collector = MatchCollector()
+
+        class FakeRSS:
+            id = 1
+            name = "Test"
+
+        collector.start_rss(FakeRSS())
+        collector.set_torrent_counts(1, total=1, new=1)
+        collector.record_match(1, MatchResult(
+            torrent_name="[Group] Test <script> 第01话 [1080p/HEVC]",
+            matched_bangumi="Test (S1)",
+            download_action="downloaded",
+            matched_pattern="Test",
+        ))
+        collector.finish_rss(1)
+
+        report = collector.generate_report()
+        assert "[Group] Test <script> 第01话 [1080p/HEVC]" in report
+
+    def test_empty_torrent_name(self):
+        """空的种子名称不应导致崩溃。"""
+        collector = MatchCollector()
+
+        class FakeRSS:
+            id = 1
+            name = "Test"
+
+        collector.start_rss(FakeRSS())
+        collector.set_torrent_counts(1, total=1, new=1)
+        collector.record_match(1, MatchResult(
+            torrent_name="",
+            matched_bangumi=None,
+            download_action="not_matched",
+        ))
+        collector.finish_rss(1)
+
+        report = collector.generate_report()
+        assert "[未匹配]" in report
+
+    def test_none_pattern_in_downloaded(self):
+        """downloaded 结果没有 matched_pattern 时应优雅处理。"""
+        collector = MatchCollector()
+
+        class FakeRSS:
+            id = 1
+            name = "Test"
+
+        collector.start_rss(FakeRSS())
+        collector.set_torrent_counts(1, total=1, new=1)
+        collector.record_match(1, MatchResult(
+            torrent_name="[G] Test 第01话",
+            matched_bangumi="Test (S1)",
+            download_action="downloaded",
+            matched_pattern=None,
+        ))
+        collector.finish_rss(1)
+
+        report = collector.generate_report()
+        assert "[下载]" in report
+        # matched_pattern 为 None 时输出 "None" 字符串
+        assert '匹配: title_raw="None"' in report
+
+    def test_no_filter_reason_in_filtered(self):
+        """filtered 结果没有 filter_reason 时不应崩溃。"""
+        collector = MatchCollector()
+
+        class FakeRSS:
+            id = 1
+            name = "Test"
+
+        collector.start_rss(FakeRSS())
+        collector.set_torrent_counts(1, total=1, new=1)
+        collector.record_match(1, MatchResult(
+            torrent_name="[G] Test 第01话",
+            matched_bangumi="Test (S1)",
+            download_action="filtered",
+            matched_pattern="Test",
+            filter_reason=None,
+        ))
+        collector.finish_rss(1)
+
+        report = collector.generate_report()
+        assert "[过滤]" in report
+
+    def test_unicode_rss_name(self):
+        """RSS 源名包含中文/日文应正确显示。"""
+        collector = MatchCollector()
+
+        class FakeRSS:
+            id = 1
+            name = "蜜柑计划 (Mikan Project)"
+
+        collector.start_rss(FakeRSS())
+        collector.set_torrent_counts(1, total=1, new=0)
+        collector.finish_rss(1)
+
+        report = collector.generate_report()
+        assert "蜜柑计划 (Mikan Project)" in report
+
+    def test_large_volume_matches(self):
+        """大量匹配结果不应导致格式错误。"""
+        collector = MatchCollector()
+
+        class FakeRSS:
+            id = 1
+            name = "Test"
+
+        collector.start_rss(FakeRSS())
+        collector.set_torrent_counts(1, total=1000, new=100)
+
+        for i in range(100):
+            collector.record_match(1, MatchResult(
+                torrent_name=f"[G] Anime 第{i:03d}话",
+                matched_bangumi="Anime (S1)",
+                download_action="downloaded",
+                matched_pattern="Anime",
+            ))
+
+        collector.finish_rss(1)
+        report = collector.generate_report()
+
+        assert "成功下载 (100 个):" in report
+        assert "汇总: 100 个新种子 -> 100 个下载, 0 个过滤, 0 个未匹配, 0 个未订阅" in report
