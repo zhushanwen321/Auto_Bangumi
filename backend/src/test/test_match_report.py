@@ -55,6 +55,7 @@ class TestMatchResult:
             "matched_bangumi",
             "download_action",
             "matched_pattern",
+            "pattern_type",
             "filter_reason",
         }
 
@@ -322,6 +323,7 @@ class TestGenerateReportMatches:
             matched_bangumi="推しの子 (S1)",
             download_action="downloaded",
             matched_pattern="推しの子",
+            pattern_type="title_raw",
         ))
 
         # filtered
@@ -330,6 +332,7 @@ class TestGenerateReportMatches:
             matched_bangumi="推しの子 (S1)",
             download_action="filtered",
             matched_pattern="推し之子",
+            pattern_type="alias",
             filter_reason="种子名称不匹配 filter 正则 /1080p/",
         ))
 
@@ -626,7 +629,7 @@ class TestGenerateReportEdgeCases:
         report = collector.generate_report()
         assert "[下载]" in report
         # matched_pattern 为 None 时输出 "None" 字符串
-        assert '匹配: title_raw="None"' in report
+        assert '匹配: pattern="None"' in report
 
     def test_no_filter_reason_in_filtered(self):
         """filtered 结果没有 filter_reason 时不应崩溃。"""

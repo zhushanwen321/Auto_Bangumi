@@ -18,6 +18,7 @@ class MatchResult:
     matched_bangumi: Optional[str] = None  # 匹配到的番剧显示名（如 "推しの子 (S1)"）
     download_action: str = "not_matched"  # downloaded / filtered / not_matched / not_added
     matched_pattern: Optional[str] = None  # 匹配的具体 title_raw 或 alias
+    pattern_type: Optional[str] = None  # "title_raw" 或 "alias"，区分匹配来源
     filter_reason: Optional[str] = None  # 过滤原因（仅 filtered 时有值）
 
 
@@ -167,7 +168,7 @@ class MatchCollector:
             lines.append(f"  {bangumi_name}:")
             for m in group:
                 lines.append(f"    + {m.torrent_name}")
-                lines.append(f"      匹配: title_raw=\"{m.matched_pattern}\"")
+                lines.append(f"      匹配: {m.pattern_type or 'pattern'}=\"{m.matched_pattern}\"")
 
     def _append_filtered_section(
         self, lines: list[str], matches: list[MatchResult]
@@ -180,7 +181,7 @@ class MatchCollector:
             lines.append(f"  {bangumi_name}:")
             for m in group:
                 lines.append(f"    - {m.torrent_name}")
-                lines.append(f"      匹配: alias=\"{m.matched_pattern}\"")
+                lines.append(f"      匹配: {m.pattern_type or 'pattern'}=\"{m.matched_pattern}\"")
                 if m.filter_reason:
                     lines.append(f"      原因: {m.filter_reason}")
 

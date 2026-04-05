@@ -184,6 +184,11 @@ class RSSEngine(Database):
 
         matched, pattern = result
 
+        # 判断匹配来源是 title_raw 还是 alias
+        pattern_type = (
+            "title_raw" if pattern == matched.title_raw else "alias"
+        )
+
         # filter 为空，直接下载
         if matched.filter == "":
             torrent.bangumi_id = matched.id
@@ -192,6 +197,7 @@ class RSSEngine(Database):
                 matched_bangumi=matched.official_title,
                 download_action="downloaded",
                 matched_pattern=pattern,
+                pattern_type=pattern_type,
                 filter_reason=None,
             )
 
@@ -205,6 +211,7 @@ class RSSEngine(Database):
                 matched_bangumi=matched.official_title,
                 download_action="downloaded",
                 matched_pattern=pattern,
+                pattern_type=pattern_type,
                 filter_reason=None,
             )
 
@@ -214,6 +221,7 @@ class RSSEngine(Database):
             matched_bangumi=matched.official_title,
             download_action="filtered",
             matched_pattern=pattern,
+            pattern_type=pattern_type,
             filter_reason=f"种子名称匹配 filter 正则 /{matched.filter}/",
         )
 
