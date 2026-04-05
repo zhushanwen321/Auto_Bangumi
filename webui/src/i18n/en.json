@@ -103,6 +103,20 @@
       "delete_confirm": "Are you sure you want to delete this provider?"
     }
   },
+  "episode_manager": {
+    "title": "Episode Manager",
+    "empty": "No torrent records found",
+    "selected_count": "{selected}/{total} selected",
+    "status": {
+      "downloaded": "Downloaded",
+      "downloading": "Downloading",
+      "not_downloaded": "Not Downloaded"
+    },
+    "footer_stats": "{total} episodes, {downloaded} downloaded",
+    "recollect_btn": "Recollect ({count})",
+    "recollect_success": "Successfully recollected {count} episode(s)",
+    "recollect_failed": "Failed to recollect episodes"
+  },
   "downloader": {
     "hit": "Please set up the downloader",
     "empty": {
