@@ -8,7 +8,7 @@ from module.database import Database, engine
 from module.downloader import DownloadClient
 from module.models import Bangumi, ResponseModel, RSSItem, Torrent
 from module.network import RequestContent
-from module.rss.match_report import MatchResult
+from module.rss.match_report import MatchCollector, MatchResult
 
 logger = logging.getLogger(__name__)
 
@@ -218,34 +218,68 @@ class RSSEngine(Database):
         )
 
     async def refresh_rss(self, client: DownloadClient, rss_id: Optional[int] = None):
-        # Get All RSS Items
+        # 获取要处理的 RSS 源
         if not rss_id:
             rss_items: list[RSSItem] = self.rss.search_active()
         else:
             rss_item = self.rss.search_id(rss_id)
             rss_items = [rss_item] if rss_item else []
-        # From RSS Items, fetch all torrents concurrently
+
         logger.debug("[Engine] Get %s RSS items", len(rss_items))
+
+        # 并发拉取所有 RSS 源的种子
         results = await asyncio.gather(
-            *[self._pull_rss_with_status(rss_item) for rss_item in rss_items]
+            *[
+                self._pull_rss_with_torrent_counts(rss_item)
+                for rss_item in rss_items
+            ]
         )
+
+        # 初始化 MatchCollector 收集匹配结果
+        collector = MatchCollector()
         now = datetime.now(timezone.utc).isoformat()
-        # Process results sequentially (DB operations)
-        for rss_item, (new_torrents, error) in zip(rss_items, results):
-            # Update connection status
+
+        # 顺序处理结果（涉及数据库操作）
+        for rss_item, (new_torrents, total_count, new_count, error) in zip(
+            rss_items, results
+        ):
+            # 更新 RSS 连接状态
             rss_item.connection_status = "error" if error else "healthy"
             rss_item.last_checked_at = now
             rss_item.last_error = error
             self.add(rss_item)
+
+            # 记录 RSS 源处理开始和种子计数
+            collector.start_rss(rss_item)
+            collector.set_torrent_counts(rss_item.id, total=total_count, new=new_count)
+
             for torrent in new_torrents:
-                matched_data = self.match_torrent(torrent)
+                matched_data, match_result = self.match_torrent_with_details(torrent)
+
                 if matched_data:
+                    # 匹配成功，尝试添加下载
                     if await client.add_torrent(torrent, matched_data):
-                        logger.debug("[Engine] Add torrent %s to client", torrent.name)
-                    torrent.downloaded = True
-            # Add all torrents to database
+                        logger.debug(
+                            "[Engine] Add torrent %s to client", torrent.name
+                        )
+                        torrent.downloaded = True
+                    else:
+                        # 下载客户端添加失败，修正 action 为 not_added
+                        match_result.download_action = "not_added"
+
+                # 无论匹配结果如何，都记录到 collector
+                collector.record_match(rss_item.id, match_result)
+
+            collector.finish_rss(rss_item.id)
+
+            # 将所有种子写入数据库
             self.torrent.add_all(new_torrents)
+
         self.commit()
+
+        # 生成并输出报告
+        report = collector.generate_report()
+        logger.info(report)
 
     async def download_bangumi(self, bangumi: Bangumi):
         async with RequestContent() as req:

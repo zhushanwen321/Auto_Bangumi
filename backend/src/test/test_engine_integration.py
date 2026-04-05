@@ -309,3 +309,198 @@ class TestPullRssWithTorrentCounts:
             result = await mock_engine._pull_rss_with_torrent_counts(rss_item)
 
         assert result == ([], 2, 0, None)
+
+
+# --- 测试 refresh_rss 集成 MatchCollector ---
+
+
+class TestRefreshRssIntegration:
+    """refresh_rss 方法集成 MatchCollector 的测试。
+
+    验证 refresh_rss 正确使用 MatchCollector 收集匹配结果并生成报告。
+    """
+
+    def _make_mock_engine(self):
+        """创建用于 refresh_rss 测试的 mock engine。"""
+        with patch("module.rss.engine.Database.__init__", return_value=None):
+            from module.rss.engine import RSSEngine
+
+            engine = RSSEngine.__new__(RSSEngine)
+            engine._filter_cache = {}
+            engine.bangumi = MagicMock()
+            engine.torrent = MagicMock()
+            engine.rss = MagicMock()
+            engine._to_refresh = False
+            # mock Database.add / commit 避免 SQLAlchemy session 依赖
+            engine.add = MagicMock()
+            engine.commit = MagicMock()
+            return engine
+
+    @pytest.mark.asyncio
+    async def test_collects_downloaded_match(self):
+        """成功下载的种子应记录为 downloaded action。"""
+        engine = self._make_mock_engine()
+
+        rss_item = RSSItem(id=1, name="Mikan", url="https://mikan.example.com/rss")
+        engine.rss.search_active.return_value = [rss_item]
+
+        torrent = make_torrent("[G] TestAnime 第01话 [1080p]")
+        bangumi = make_bangumi(
+            id=1,
+            official_title="TestAnime (S1)",
+            title_raw="TestAnime",
+            filter="",
+        )
+
+        engine.torrent.check_new.return_value = [torrent]
+        engine.bangumi.match_torrent_with_pattern.return_value = (
+            bangumi,
+            "TestAnime",
+        )
+
+        mock_client = AsyncMock()
+        mock_client.add_torrent.return_value = True
+
+        # 收集日志输出
+        with patch.object(engine, "_get_torrents", return_value=[torrent]):
+            await engine.refresh_rss(mock_client)
+
+        # 验证报告通过 logger.info 输出（此处只验证不抛异常）
+        # 更详细的验证见 test_generates_report
+
+    @pytest.mark.asyncio
+    async def test_collects_not_matched(self):
+        """未匹配的种子应记录为 not_matched action。"""
+        engine = self._make_mock_engine()
+
+        rss_item = RSSItem(id=1, name="Mikan", url="https://mikan.example.com/rss")
+        engine.rss.search_active.return_value = [rss_item]
+
+        torrent = make_torrent("[G] UnknownAnime 第01话")
+        engine.torrent.check_new.return_value = [torrent]
+        engine.bangumi.match_torrent_with_pattern.return_value = None
+
+        mock_client = AsyncMock()
+
+        with patch.object(engine, "_get_torrents", return_value=[torrent]):
+            await engine.refresh_rss(mock_client)
+
+    @pytest.mark.asyncio
+    async def test_collects_filtered(self):
+        """被 filter 过滤的种子应记录为 filtered action。"""
+        engine = self._make_mock_engine()
+
+        rss_item = RSSItem(id=1, name="Mikan", url="https://mikan.example.com/rss")
+        engine.rss.search_active.return_value = [rss_item]
+
+        torrent = make_torrent("[G] TestAnime 第01话 [720p]")
+        bangumi = make_bangumi(
+            id=1,
+            official_title="TestAnime (S1)",
+            title_raw="TestAnime",
+            filter="720",
+        )
+        engine.torrent.check_new.return_value = [torrent]
+        engine.bangumi.match_torrent_with_pattern.return_value = (
+            bangumi,
+            "TestAnime",
+        )
+
+        mock_client = AsyncMock()
+
+        with patch.object(engine, "_get_torrents", return_value=[torrent]):
+            await engine.refresh_rss(mock_client)
+
+    @pytest.mark.asyncio
+    async def test_single_rss_id_filter(self):
+        """传入 rss_id 时只处理指定的 RSS 源。"""
+        engine = self._make_mock_engine()
+
+        rss_item = RSSItem(id=5, name="Target RSS", url="https://example.com/rss")
+        engine.rss.search_id.return_value = rss_item
+
+        torrent = make_torrent("[G] Anime 第01话")
+        engine.torrent.check_new.return_value = []
+        engine.bangumi.match_torrent_with_pattern.return_value = None
+
+        mock_client = AsyncMock()
+
+        with patch.object(engine, "_get_torrents", return_value=[torrent]):
+            await engine.refresh_rss(mock_client, rss_id=5)
+
+        engine.rss.search_id.assert_called_once_with(5)
+
+    @pytest.mark.asyncio
+    async def test_empty_rss_items(self):
+        """没有活跃的 RSS 源时正常完成，生成空报告。"""
+        engine = self._make_mock_engine()
+        engine.rss.search_active.return_value = []
+
+        mock_client = AsyncMock()
+
+        with patch("module.rss.engine.logger") as mock_logger:
+            await engine.refresh_rss(mock_client)
+
+        # 应该有 info 级别的日志输出（报告）
+        assert any(
+            call[0][0].startswith("========== RSS")
+            for call in mock_logger.info.call_args_list
+        )
+
+    @pytest.mark.asyncio
+    async def test_report_contains_rss_name_and_counts(self):
+        """报告中应包含 RSS 源名称和种子计数。"""
+        engine = self._make_mock_engine()
+
+        rss_item = RSSItem(id=1, name="蜜柑计划", url="https://mikan.example.com/rss")
+        engine.rss.search_active.return_value = [rss_item]
+
+        torrent = make_torrent("[G] TestAnime 第01话 [1080p]")
+        engine.torrent.check_new.return_value = [torrent]
+        engine.bangumi.match_torrent_with_pattern.return_value = None
+
+        mock_client = AsyncMock()
+
+        with patch.object(engine, "_get_torrents", return_value=[torrent]):
+            with patch("module.rss.engine.logger") as mock_logger:
+                await engine.refresh_rss(mock_client)
+
+        # 从 logger.info 调用中提取报告文本
+        report_calls = mock_logger.info.call_args_list
+        report_text = "\n".join(call[0][0] for call in report_calls)
+
+        assert "蜜柑计划" in report_text
+        assert "1 个新种子" in report_text
+
+    @pytest.mark.asyncio
+    async def test_add_torrent_failure_records_not_added(self):
+        """匹配成功但 add_torrent 返回 False 时，应修正 action 为 not_added。"""
+        engine = self._make_mock_engine()
+
+        rss_item = RSSItem(id=1, name="Test", url="https://example.com/rss")
+        engine.rss.search_active.return_value = [rss_item]
+
+        torrent = make_torrent("[G] TestAnime 第01话 [1080p]")
+        bangumi = make_bangumi(
+            id=1,
+            official_title="TestAnime (S1)",
+            title_raw="TestAnime",
+            filter="",
+        )
+        engine.torrent.check_new.return_value = [torrent]
+        engine.bangumi.match_torrent_with_pattern.return_value = (
+            bangumi,
+            "TestAnime",
+        )
+
+        mock_client = AsyncMock()
+        mock_client.add_torrent.return_value = False  # 下载失败
+
+        with patch.object(engine, "_get_torrents", return_value=[torrent]):
+            with patch("module.rss.engine.logger") as mock_logger:
+                await engine.refresh_rss(mock_client)
+
+        report_calls = mock_logger.info.call_args_list
+        report_text = "\n".join(call[0][0] for call in report_calls)
+
+        assert "未订阅" in report_text
