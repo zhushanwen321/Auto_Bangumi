@@ -8,6 +8,7 @@ from module.database import Database, engine
 from module.downloader import DownloadClient
 from module.models import Bangumi, ResponseModel, RSSItem, Torrent
 from module.network import RequestContent
+from module.rss.match_report import MatchResult
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +142,64 @@ class RSSEngine(Database):
                 torrent.bangumi_id = matched.id
                 return matched
         return None
+
+    def match_torrent_with_details(
+        self, torrent: Torrent
+    ) -> tuple[Optional[Bangumi], "MatchResult"]:
+        """匹配种子并返回详细信息，用于日志记录。
+
+        与 match_torrent() 的 filter 判断逻辑完全一致，额外返回 MatchResult
+        记录匹配过程（匹配的 pattern、下载/过滤动作及原因）。
+
+        Returns:
+            (Bangumi 或 None, MatchResult) 元组。
+            Bangumi 非 None 表示应该下载，None 表示不下载。
+        """
+        result = self.bangumi.match_torrent_with_pattern(torrent.name)
+
+        if not result:
+            return None, MatchResult(
+                torrent_name=torrent.name,
+                matched_bangumi=None,
+                download_action="not_matched",
+                matched_pattern=None,
+                filter_reason=None,
+            )
+
+        matched, pattern = result
+
+        # filter 为空，直接下载
+        if matched.filter == "":
+            torrent.bangumi_id = matched.id
+            return matched, MatchResult(
+                torrent_name=torrent.name,
+                matched_bangumi=matched.official_title,
+                download_action="downloaded",
+                matched_pattern=pattern,
+                filter_reason=None,
+            )
+
+        # filter 是排除规则：search 匹配到说明种子名包含排除关键词
+        filter_pattern = self._get_filter_pattern(matched.filter)
+        if not filter_pattern.search(torrent.name):
+            # 种子名不包含排除关键词，允许下载
+            torrent.bangumi_id = matched.id
+            return matched, MatchResult(
+                torrent_name=torrent.name,
+                matched_bangumi=matched.official_title,
+                download_action="downloaded",
+                matched_pattern=pattern,
+                filter_reason=None,
+            )
+
+        # 种子名包含排除关键词，被过滤
+        return None, MatchResult(
+            torrent_name=torrent.name,
+            matched_bangumi=matched.official_title,
+            download_action="filtered",
+            matched_pattern=pattern,
+            filter_reason=f"种子名称匹配 filter 正则 /{matched.filter}/",
+        )
 
     async def refresh_rss(self, client: DownloadClient, rss_id: Optional[int] = None):
         # Get All RSS Items
