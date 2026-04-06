@@ -8,11 +8,13 @@ from module.conf import settings
 from module.database import Database
 from module.manager import TorrentManager
 from module.models import APIResponse, Bangumi, BangumiUpdate, TorrentDetail, RecollectRequest, Torrent
+from module.models.torrent import ScanTorrentsResponse, RecollectByUrlsRequest
 from module.parser.analyser.offset_detector import (
     OffsetSuggestion as DetectorSuggestion,
 )
 from module.parser.analyser.offset_detector import detect_offset_mismatch
 from module.parser.analyser.tmdb_parser import tmdb_parser
+from module.rss.engine import RSSEngine
 from module.security.api import UNAUTHORIZED, get_current_user
 
 from .response import u_response
@@ -519,6 +521,110 @@ async def recollect_torrents(bangumi_id: int, request: RecollectRequest):
 
     except Exception as e:
         logger.error("[API] Recollect failed: %s", e)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": False,
+                "msg_en": f"Recollect failed: {str(e)}",
+                "msg_zh": f"重新收集失败: {str(e)}",
+            },
+        )
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": True,
+            "msg_en": f"Successfully recollected {len(torrents)} torrents.",
+            "msg_zh": f"成功重新收集 {len(torrents)} 个种子。",
+        },
+    )
+
+
+@router.post(
+    path="/{bangumi_id}/scan-torrents",
+    response_model=ScanTorrentsResponse,
+    dependencies=[Depends(get_current_user)],
+)
+async def scan_torrents(bangumi_id: int):
+    """实时从 RSS 拉取种子，匹配当前番剧，返回详情。不写入数据库。"""
+    with RSSEngine() as engine:
+        scanned, report = await engine.scan_bangumi_torrents(bangumi_id)
+    return ScanTorrentsResponse(report=report, torrents=scanned)
+
+
+@router.post(
+    path="/{bangumi_id}/recollect-by-urls",
+    response_model=APIResponse,
+    dependencies=[Depends(get_current_user)],
+)
+async def recollect_by_urls(bangumi_id: int, request: RecollectByUrlsRequest):
+    """按种子 URL 列表提交下载。重新拉取 RSS 获取种子完整数据。
+
+    静默忽略不在当前 RSS 中的 URL。
+    """
+    with RSSEngine() as engine:
+        scanned, _ = await engine.scan_bangumi_torrents(bangumi_id)
+
+        bangumi = engine.bangumi.search_id(bangumi_id)
+        if not bangumi:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "status": False,
+                    "msg_en": f"Bangumi {bangumi_id} not found.",
+                    "msg_zh": f"未找到番剧 {bangumi_id}。",
+                },
+            )
+
+        url_set = set(request.torrent_urls)
+        matched_scanned = [t for t in scanned if t.url in url_set]
+
+        if not matched_scanned:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": False,
+                    "msg_en": "No matching torrents found in current RSS feed.",
+                    "msg_zh": "当前 RSS 中未找到匹配的种子。",
+                },
+            )
+
+        # Rebuild Torrent ORM objects from scan results
+        torrents = []
+        for t in matched_scanned:
+            torrent = Torrent(
+                name=t.name,
+                url=t.url,
+                bangumi_id=bangumi_id,
+                downloaded=False,
+            )
+            torrents.append(torrent)
+
+        # Write to torrent table
+        engine.torrent.add_all(torrents)
+
+    # Submit to download client
+    try:
+        async with DownloadClient() as client:
+            success = await client.add_torrent(torrents, bangumi)
+            if not success:
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "status": False,
+                        "msg_en": "Failed to add torrents to download client.",
+                        "msg_zh": "添加种子到下载客户端失败。",
+                    },
+                )
+
+        # Update downloaded status (separate RSSEngine context to avoid session conflicts)
+        with RSSEngine() as engine:
+            for t in torrents:
+                t.downloaded = True
+            engine.torrent.update_all(torrents)
+
+    except Exception as e:
+        logger.error("[API] Recollect-by-urls failed: %s", e)
         return JSONResponse(
             status_code=500,
             content={

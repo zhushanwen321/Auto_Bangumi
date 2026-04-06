@@ -364,3 +364,162 @@ class TestScanBangumiTorrents:
         assert len(results) == 2
         assert "下载" in report
         assert "过滤" in report
+
+
+# ---------------------------------------------------------------------------
+# Task 3-4: API 端点测试
+# ---------------------------------------------------------------------------
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from module.api import v1
+from module.security.api import get_current_user
+
+
+@pytest.fixture
+def app():
+    _app = FastAPI()
+    _app.include_router(v1, prefix="/api")
+    return _app
+
+
+@pytest.fixture
+def authed_client(app):
+    async def mock_user():
+        return "testuser"
+    app.dependency_overrides[get_current_user] = mock_user
+    client = TestClient(app)
+    yield client
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def unauthed_client(app):
+    return TestClient(app)
+
+
+class TestScanTorrentsEndpoint:
+    def test_scan_success(self, authed_client):
+        scanned = [
+            ScannedTorrent(name="[G] Anime - 01", url="https://a.com/1", download_action="downloaded"),
+        ]
+        with patch("module.api.bangumi.RSSEngine") as MockEngine:
+            mock_inst = MagicMock()
+            mock_inst.scan_bangumi_torrents = AsyncMock(return_value=(scanned, "报告"))
+            mock_inst.__enter__ = MagicMock(return_value=mock_inst)
+            mock_inst.__exit__ = MagicMock(return_value=False)
+            MockEngine.return_value = mock_inst
+            resp = authed_client.post("/api/v1/bangumi/1/scan-torrents")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "report" in data
+        assert "torrents" in data
+        assert len(data["torrents"]) == 1
+
+    def test_scan_empty(self, authed_client):
+        with patch("module.api.bangumi.RSSEngine") as MockEngine:
+            mock_inst = MagicMock()
+            mock_inst.scan_bangumi_torrents = AsyncMock(return_value=([], "无匹配"))
+            mock_inst.__enter__ = MagicMock(return_value=mock_inst)
+            mock_inst.__exit__ = MagicMock(return_value=False)
+            MockEngine.return_value = mock_inst
+            resp = authed_client.post("/api/v1/bangumi/999/scan-torrents")
+
+        assert resp.status_code == 200
+        assert resp.json()["torrents"] == []
+
+    @patch("module.security.api.DEV_AUTH_BYPASS", False)
+    def test_scan_auth_required(self, unauthed_client):
+        resp = unauthed_client.post("/api/v1/bangumi/1/scan-torrents")
+        assert resp.status_code == 401
+
+
+class TestRecollectByUrlsEndpoint:
+    def test_recollect_success(self, authed_client):
+        scanned = [
+            ScannedTorrent(name="[G] A - 01", url="https://a.com/1", download_action="downloaded"),
+        ]
+        with patch("module.api.bangumi.RSSEngine") as MockEngine, \
+             patch("module.api.bangumi.DownloadClient") as MockClient:
+            mock_engine = MagicMock()
+            mock_engine.scan_bangumi_torrents = AsyncMock(return_value=(scanned, "报告"))
+            mock_engine.bangumi = MagicMock()
+            mock_engine.bangumi.search_id.return_value = make_bangumi(id=1)
+            mock_engine.torrent = MagicMock()
+            mock_engine.__enter__ = MagicMock(return_value=mock_engine)
+            mock_engine.__exit__ = MagicMock(return_value=False)
+            MockEngine.return_value = mock_engine
+
+            mock_client = AsyncMock()
+            mock_client.add_torrent = AsyncMock(return_value=True)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            MockClient.return_value = mock_client
+
+            resp = authed_client.post(
+                "/api/v1/bangumi/1/recollect-by-urls",
+                json={"torrent_urls": ["https://a.com/1"]},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] is True
+
+    def test_recollect_ignores_missing_urls(self, authed_client):
+        scanned = [
+            ScannedTorrent(name="[G] A - 01", url="https://a.com/1", download_action="downloaded"),
+        ]
+        with patch("module.api.bangumi.RSSEngine") as MockEngine, \
+             patch("module.api.bangumi.DownloadClient") as MockClient:
+            mock_engine = MagicMock()
+            mock_engine.scan_bangumi_torrents = AsyncMock(return_value=(scanned, "报告"))
+            mock_engine.bangumi = MagicMock()
+            mock_engine.bangumi.search_id.return_value = make_bangumi(id=1)
+            mock_engine.torrent = MagicMock()
+            mock_engine.__enter__ = MagicMock(return_value=mock_engine)
+            mock_engine.__exit__ = MagicMock(return_value=False)
+            MockEngine.return_value = mock_engine
+
+            mock_client = AsyncMock()
+            mock_client.add_torrent = AsyncMock(return_value=True)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            MockClient.return_value = mock_client
+
+            resp = authed_client.post(
+                "/api/v1/bangumi/1/recollect-by-urls",
+                json={"torrent_urls": ["https://a.com/1", "https://missing.com/gone"]},
+            )
+
+        assert resp.status_code == 200
+        # Only 1 torrent actually processed (the missing one silently ignored)
+        added = mock_engine.torrent.add_all.call_args[0][0]
+        assert len(added) == 1
+
+    def test_recollect_no_matching_urls(self, authed_client):
+        scanned = [
+            ScannedTorrent(name="[G] A - 01", url="https://a.com/1", download_action="downloaded"),
+        ]
+        with patch("module.api.bangumi.RSSEngine") as MockEngine:
+            mock_engine = MagicMock()
+            mock_engine.scan_bangumi_torrents = AsyncMock(return_value=(scanned, "报告"))
+            mock_engine.bangumi = MagicMock()
+            mock_engine.bangumi.search_id.return_value = make_bangumi(id=1)
+            mock_engine.__enter__ = MagicMock(return_value=mock_engine)
+            mock_engine.__exit__ = MagicMock(return_value=False)
+            MockEngine.return_value = mock_engine
+
+            resp = authed_client.post(
+                "/api/v1/bangumi/1/recollect-by-urls",
+                json={"torrent_urls": ["https://totally-different.com/missing"]},
+            )
+
+        assert resp.status_code == 400
+
+    @patch("module.security.api.DEV_AUTH_BYPASS", False)
+    def test_recollect_auth_required(self, unauthed_client):
+        resp = unauthed_client.post(
+            "/api/v1/bangumi/1/recollect-by-urls",
+            json={"torrent_urls": ["https://a.com/1"]},
+        )
+        assert resp.status_code == 401
