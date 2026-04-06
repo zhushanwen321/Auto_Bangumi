@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from .auth import router as auth_router
 from .bangumi import router as bangumi_router
 from .config import router as config_router
+from .diagnosis import fix_router as diagnosis_fix_router, router as diagnosis_router
 from .downloader import router as downloader_router
 from .log import router as log_router
 from .passkey import router as passkey_router
@@ -27,3 +28,5 @@ v1.include_router(rss_router)
 v1.include_router(search_router)
 v1.include_router(setup_router)
 v1.include_router(notification_router)
+v1.include_router(diagnosis_router)
+v1.include_router(diagnosis_fix_router)
