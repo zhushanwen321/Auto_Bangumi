@@ -12,6 +12,27 @@ const { rss, selectedRSS } = storeToRefs(useRSSStore());
 const { getAll, deleteSelected, disableSelected, enableSelected } =
   useRSSStore();
 
+// Diagnosis modal state
+const diagnosisTarget = ref<{ id: number; name: string } | null>(null);
+const diagnosisVisible = ref(false);
+
+function openDiagnosis(rss: RSS) {
+  diagnosisTarget.value = { id: rss.id, name: rss.name };
+  diagnosisVisible.value = true;
+}
+
+function closeDiagnosis() {
+  diagnosisVisible.value = false;
+  diagnosisTarget.value = null;
+}
+
+// 当 Modal 通过 v-model 关闭时，同步清理 diagnosisTarget
+watch(diagnosisVisible, (val) => {
+  if (!val && diagnosisTarget.value) {
+    diagnosisTarget.value = null;
+  }
+});
+
 onActivated(() => {
   getAll();
 });
@@ -65,6 +86,12 @@ const rssColumns = computed<DataTableColumns<RSS>>(() => [
           ) : (
             <ab-tag type="inactive" title="inactive" />
           )}
+          <button
+            class="diag-btn"
+            onClick={() => openDiagnosis(rss)}
+          >
+            Diagnosis
+          </button>
         </div>
       );
     },
@@ -111,6 +138,12 @@ const rssRowKey = (row: RSS) => row.id;
                 :type="item.enabled ? 'active' : 'inactive'"
                 :title="item.enabled ? 'active' : 'inactive'"
               />
+              <button
+                class="diag-btn"
+                @click="openDiagnosis(item)"
+              >
+                Diagnosis
+              </button>
             </div>
           </div>
         </template>
@@ -141,6 +174,13 @@ const rssRowKey = (row: RSS) => row.id;
         </div>
       </div>
     </ab-container>
+
+    <ab-rss-diagnosis
+      v-if="diagnosisTarget"
+      :rss-id="diagnosisTarget.id"
+      :rss-name="diagnosisTarget.name"
+      v-model="diagnosisVisible"
+    />
   </div>
 </template>
 
@@ -197,5 +237,28 @@ const rssRowKey = (row: RSS) => row.id;
   gap: 4px;
   flex-wrap: wrap;
   margin-top: 4px;
+  align-items: center;
+}
+
+// Diagnosis button (shared between desktop and mobile)
+.diag-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 500;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-hover);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+
+  &:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  }
 }
 </style>
