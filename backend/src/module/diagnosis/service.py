@@ -31,9 +31,8 @@ class DiagnosisService(RSSEngine):
         if not rss:
             return []
 
-        torrents = await self._get_torrents(rss)
-
-        # 解析所有种子，收集按标题分组的信息
+        # 诊断场景不过滤种子，获取所有种子用于诊断
+        torrents = await self._get_torrents(rss, skip_filter=True)
         groups: dict[str, list[Torrent]] = defaultdict(list)
         parse_results: dict[str, Optional[Bangumi]] = {}
 
@@ -102,7 +101,7 @@ class DiagnosisService(RSSEngine):
         collector = DiagnosisCollector()
 
         try:
-            torrents = await self._get_torrents(rss)
+            torrents = await self._get_torrents(rss, skip_filter=True)
         except Exception as e:
             return DiagnosisReport(
                 rss_id=rss_id,

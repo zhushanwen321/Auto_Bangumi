@@ -1,20 +1,18 @@
 <script lang="ts" setup>
-import { Close, Down, Right } from '@icon-park/vue-next';
+import { Close } from '@icon-park/vue-next';
 import { NSpin } from 'naive-ui';
 import type {
-  AnimeDiagnosis,
   DiagnosisReport,
   PreviewItem,
-  TorrentDiagnosis,
 } from '#/diagnosis';
 import { apiDiagnosis } from '@/api/diagnosis';
-
-const { t } = useMyI18n();
 
 const props = defineProps<{
   rssId: number;
   rssName: string;
 }>();
+
+const { t } = useMyI18n();
 
 const show = defineModel<boolean>({ default: false });
 const message = useMessage();
@@ -153,12 +151,6 @@ function booleanTag(val: boolean | null): 'active' | 'warn' | 'inactive' {
   if (val === true) return 'active';
   if (val === false) return 'warn';
   return 'inactive';
-}
-
-function booleanText(val: boolean | null): string {
-  if (val === true) return 'Yes';
-  if (val === false) return 'No';
-  return 'N/A';
 }
 
 function close() {

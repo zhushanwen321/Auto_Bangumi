@@ -21,11 +21,6 @@ function openDiagnosis(rss: RSS) {
   diagnosisVisible.value = true;
 }
 
-function closeDiagnosis() {
-  diagnosisVisible.value = false;
-  diagnosisTarget.value = null;
-}
-
 // 当 Modal 通过 v-model 关闭时，同步清理 diagnosisTarget
 watch(diagnosisVisible, (val) => {
   if (!val && diagnosisTarget.value) {
@@ -174,9 +169,9 @@ const rssRowKey = (row: RSS) => row.id;
 
     <ab-rss-diagnosis
       v-if="diagnosisTarget"
+      v-model="diagnosisVisible"
       :rss-id="diagnosisTarget.id"
       :rss-name="diagnosisTarget.name"
-      v-model="diagnosisVisible"
     />
   </div>
 </template>

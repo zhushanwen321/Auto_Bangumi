@@ -24,9 +24,13 @@ class RSSEngine(Database):
         self._filter_cache: dict[str, re.Pattern] = {}
 
     @staticmethod
-    async def _get_torrents(rss: RSSItem) -> list[Torrent]:
+    async def _get_torrents(
+        rss: RSSItem, skip_filter: bool = False
+    ) -> list[Torrent]:
         async with RequestContent() as req:
-            torrents = await req.get_torrents(rss.url)
+            # 诊断场景不过滤种子，确保用户能看到所有内容
+            _filter = "" if skip_filter else None
+            torrents = await req.get_torrents(rss.url, _filter=_filter)
             # Add RSS ID
             for torrent in torrents:
                 torrent.rss_id = rss.id
