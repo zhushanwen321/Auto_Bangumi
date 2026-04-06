@@ -90,7 +90,7 @@ const rssColumns = computed<DataTableColumns<RSS>>(() => [
             class="diag-btn"
             onClick={() => openDiagnosis(rss)}
           >
-            Diagnosis
+            {t('rss.diagnosis.button')}
           </button>
         </div>
       );
@@ -142,7 +142,7 @@ const rssRowKey = (row: RSS) => row.id;
                 class="diag-btn"
                 @click="openDiagnosis(item)"
               >
-                Diagnosis
+                {{ t('rss.diagnosis.button') }}
               </button>
             </div>
           </div>
