@@ -110,25 +110,30 @@ class DiagnosisService(RSSEngine):
                 errors=[f"获取 RSS 种子失败: {e}"],
             )
 
+        # 提前查询数据库中的下载状态（避免 N+1 查询）
+        existing_torrents = self.torrent.search_rss(rss_id)
+        downloaded_map = {ext.name: ext.downloaded for ext in existing_torrents}
+
         for t in torrents:
             # 第一步：解析
             parsed = TitleParser.raw_parser(t.name, collector=collector)
             # 第二步：匹配 + 过滤
             self.match_torrent(t, collector=collector)
             # 第三步：检查下载状态（诊断场景只检查数据库记录）
-            if parsed:
-                existing = self.torrent.search_rss(rss_id)
-                for ext in existing:
-                    if ext.name == t.name:
-                        collector.record_download(t.name, ext.downloaded)
-                        break
+            if t.name in downloaded_map:
+                collector.record_download(t.name, downloaded_map[t.name])
 
-        # 聚合 RSS 需要额外检查 bangumi 创建状态
+        # 聚合 RSS 需要额外检查 bangumi 创建状态（不执行创建，只查询）
         if rss.aggregate:
-            from module.rss.analyser import RSSAnalyser
-
-            analyser = RSSAnalyser()
-            await analyser.torrents_to_data(torrents, rss, full_parse=True, collector=collector)
+            for t in torrents:
+                parsed = TitleParser.raw_parser(t.name)
+                if parsed and parsed.title_raw:
+                    # 检查数据库中是否已有对应 bangumi 记录
+                    existing = self.bangumi.match_torrent(t.name)
+                    if existing:
+                        collector.record_bangumi_create(t.name, existing)
+                    else:
+                        collector.record_bangumi_create(t.name, None)
 
         return collector.build_report(rss_id, rss.url, anime_titles)
 
@@ -194,13 +199,23 @@ class DiagnosisService(RSSEngine):
         title_raw = params.get("title_raw", action.torrent_name)
         season = params.get("season", 1)
 
-        bangumi = Bangumi(
-            official_title=title_raw,
-            title_raw=title_raw,
-            season=season,
-            filter="",
-        )
-        self.bangumi.add_all([bangumi])
+        # 先检查是否已有匹配的 bangumi 记录
+        existing = self.bangumi.match_torrent(title_raw)
+        if existing:
+            # 更新已有记录
+            if "season" in params:
+                existing.season = season
+            if "official_title" in params:
+                existing.official_title = params["official_title"]
+            self.add(existing)
+        else:
+            bangumi = Bangumi(
+                official_title=title_raw,
+                title_raw=title_raw,
+                season=season,
+                filter="",
+            )
+            self.bangumi.add_all([bangumi])
         self.commit()
         return True
 

@@ -517,11 +517,16 @@ class TestDiagnosisService:
         torrent = Torrent(name="[Sub] AnimeX S01E01", url="magnet:?")
         bangumi = Bangumi(title_raw="AnimeX", id=5, filter="")
 
+        def fake_raw_parser(name, collector=None):
+            if collector:
+                collector.record_parse(name, bangumi)
+            return bangumi
+
         with patch.object(
             DiagnosisService, "_get_torrents", new_callable=AsyncMock, return_value=[torrent]
         ):
             with patch("module.diagnosis.service.TitleParser") as MockParser:
-                MockParser.raw_parser.return_value = bangumi
+                MockParser.raw_parser = staticmethod(fake_raw_parser)
                 svc.bangumi.match_torrent.return_value = bangumi
 
                 report = await svc.diagnose(1)
@@ -593,3 +598,245 @@ class TestDiagnosisService:
         assert bangumi.filter == "720,1080"
         svc.add.assert_called_once_with(bangumi)
         svc.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_diagnose_normal_rss_skips_bangumi_create(self):
+        """普通 RSS (aggregate=False) 不检查 bangumi 创建状态。"""
+        from module.diagnosis.service import DiagnosisService
+        from module.models import RSSItem, Torrent
+
+        svc = DiagnosisService.__new__(DiagnosisService)
+        svc._filter_cache = {}
+        svc.bangumi = MagicMock()
+        svc.rss = MagicMock()
+        svc.torrent = MagicMock()
+        svc.add = MagicMock()
+        svc.commit = MagicMock()
+
+        rss = RSSItem(id=2, name="test", url="https://test/rss", aggregate=False)
+        svc.rss.search_id.return_value = rss
+
+        torrent = Torrent(name="[Sub] AnimeY S01E01", url="magnet:?")
+        bangumi = Bangumi(title_raw="AnimeY", id=6, filter="")
+
+        def fake_raw_parser(name, collector=None):
+            if collector:
+                collector.record_parse(name, bangumi)
+            return bangumi
+
+        with patch.object(
+            DiagnosisService, "_get_torrents", new_callable=AsyncMock, return_value=[torrent]
+        ):
+            with patch("module.diagnosis.service.TitleParser") as MockParser:
+                MockParser.raw_parser = staticmethod(fake_raw_parser)
+                svc.bangumi.match_torrent.return_value = bangumi
+
+                report = await svc.diagnose(2)
+
+        assert report.rss_id == 2
+        assert len(report.anime_list) == 1
+        assert report.anime_list[0].anime_title == "AnimeY"
+
+    @pytest.mark.asyncio
+    async def test_diagnose_aggregate_rss_checks_bangumi_create(self):
+        """聚合 RSS (aggregate=True) 检查 bangumi 创建状态。"""
+        from module.diagnosis.service import DiagnosisService
+        from module.models import RSSItem, Torrent
+
+        svc = DiagnosisService.__new__(DiagnosisService)
+        svc._filter_cache = {}
+        svc.bangumi = MagicMock()
+        svc.rss = MagicMock()
+        svc.torrent = MagicMock()
+        svc.add = MagicMock()
+        svc.commit = MagicMock()
+
+        rss = RSSItem(id=3, name="test", url="https://test/rss", aggregate=True)
+        svc.rss.search_id.return_value = rss
+
+        torrent = Torrent(name="[Sub] AnimeZ S01E01", url="magnet:?")
+        bangumi = Bangumi(title_raw="AnimeZ", id=7, filter="")
+
+        def fake_raw_parser(name, collector=None):
+            if collector:
+                collector.record_parse(name, bangumi)
+            return bangumi
+
+        with patch.object(
+            DiagnosisService, "_get_torrents", new_callable=AsyncMock, return_value=[torrent]
+        ):
+            with patch("module.diagnosis.service.TitleParser") as MockParser:
+                MockParser.raw_parser = staticmethod(fake_raw_parser)
+                svc.bangumi.match_torrent.return_value = bangumi
+
+                report = await svc.diagnose(3)
+
+        assert report.rss_id == 3
+
+    @pytest.mark.asyncio
+    async def test_diagnose_with_anime_titles_filter(self):
+        """diagnose 传入 anime_titles 参数只返回指定番剧。"""
+        from module.diagnosis.service import DiagnosisService
+        from module.models import RSSItem, Torrent
+
+        svc = DiagnosisService.__new__(DiagnosisService)
+        svc._filter_cache = {}
+        svc.bangumi = MagicMock()
+        svc.rss = MagicMock()
+        svc.torrent = MagicMock()
+        svc.add = MagicMock()
+        svc.commit = MagicMock()
+
+        rss = RSSItem(id=4, name="test", url="https://test/rss", aggregate=False)
+        svc.rss.search_id.return_value = rss
+
+        t1 = Torrent(name="[Sub] Keep S01E01", url="magnet:?1")
+        t2 = Torrent(name="[Sub] Skip S01E01", url="magnet:?2")
+        b1 = Bangumi(title_raw="Keep", id=8, filter="")
+        b2 = Bangumi(title_raw="Skip", id=9, filter="")
+
+        def fake_raw_parser(name, collector=None):
+            b = b1 if "Keep" in name else b2
+            if collector:
+                collector.record_parse(name, b)
+            return b
+
+        with patch.object(
+            DiagnosisService, "_get_torrents", new_callable=AsyncMock, return_value=[t1, t2]
+        ):
+            with patch("module.diagnosis.service.TitleParser") as MockParser:
+                MockParser.raw_parser = staticmethod(fake_raw_parser)
+                svc.bangumi.match_torrent.side_effect = lambda name: (
+                    b1 if "Keep" in name else b2
+                )
+
+                report = await svc.diagnose(4, anime_titles=["Keep"])
+
+        assert len(report.anime_list) == 1
+        assert report.anime_list[0].anime_title == "Keep"
+
+    @pytest.mark.asyncio
+    async def test_fix_link_bangumi(self):
+        from module.diagnosis.service import DiagnosisService
+        from module.diagnosis.models import FixAction
+        from module.models import Torrent as TorrentModel
+
+        svc = DiagnosisService.__new__(DiagnosisService)
+        svc._filter_cache = {}
+        svc.bangumi = MagicMock()
+        svc.torrent = MagicMock()
+        svc.add = MagicMock()
+        svc.commit = MagicMock()
+
+        torrent = TorrentModel(id=10, name="test.torrent", url="magnet:?")
+        bangumi = Bangumi(id=5, official_title="Test")
+        svc.torrent.search.return_value = torrent
+        svc.bangumi.search_id.return_value = bangumi
+
+        action = FixAction(
+            action="link_bangumi",
+            torrent_name="test.torrent",
+            params={"torrent_id": 10, "bangumi_id": 5},
+        )
+
+        result = await svc.fix(action)
+
+        assert result is True
+        assert torrent.bangumi_id == 5
+        svc.add.assert_called_once_with(torrent)
+        svc.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_fix_parse_creates_new(self):
+        """fix_parse 在没有匹配 bangumi 时创建新记录。"""
+        from module.diagnosis.service import DiagnosisService
+        from module.diagnosis.models import FixAction
+
+        svc = DiagnosisService.__new__(DiagnosisService)
+        svc._filter_cache = {}
+        svc.bangumi = MagicMock()
+        svc.torrent = MagicMock()
+        svc.add = MagicMock()
+        svc.commit = MagicMock()
+
+        svc.bangumi.match_torrent.return_value = None
+
+        action = FixAction(
+            action="fix_parse",
+            torrent_name="[Sub] NewAnime S01E01",
+            params={"title_raw": "NewAnime", "season": 1},
+        )
+
+        result = await svc.fix(action)
+
+        assert result is True
+        svc.bangumi.add_all.assert_called_once()
+        svc.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_fix_parse_updates_existing(self):
+        """fix_parse 在已有匹配 bangumi 时更新记录。"""
+        from module.diagnosis.service import DiagnosisService
+        from module.diagnosis.models import FixAction
+
+        svc = DiagnosisService.__new__(DiagnosisService)
+        svc._filter_cache = {}
+        svc.bangumi = MagicMock()
+        svc.torrent = MagicMock()
+        svc.add = MagicMock()
+        svc.commit = MagicMock()
+
+        existing = Bangumi(id=10, title_raw="ExistAnime", season=1)
+        svc.bangumi.match_torrent.return_value = existing
+
+        action = FixAction(
+            action="fix_parse",
+            torrent_name="[Sub] ExistAnime S01E01",
+            params={"title_raw": "ExistAnime", "season": 2},
+        )
+
+        result = await svc.fix(action)
+
+        assert result is True
+        assert existing.season == 2
+        svc.add.assert_called_once_with(existing)
+        svc.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_diagnose_rss_not_found(self):
+        """RSS 不存在时返回带 error 的报告。"""
+        from module.diagnosis.service import DiagnosisService
+
+        svc = DiagnosisService.__new__(DiagnosisService)
+        svc._filter_cache = {}
+        svc.bangumi = MagicMock()
+        svc.rss = MagicMock()
+        svc.torrent = MagicMock()
+        svc.add = MagicMock()
+        svc.commit = MagicMock()
+
+        svc.rss.search_id.return_value = None
+
+        report = await svc.diagnose(999)
+
+        assert report.rss_id == 999
+        assert report.errors == ["RSS 不存在"]
+
+    @pytest.mark.asyncio
+    async def test_preview_rss_not_found(self):
+        """RSS 不存在时 preview 返回空列表。"""
+        from module.diagnosis.service import DiagnosisService
+
+        svc = DiagnosisService.__new__(DiagnosisService)
+        svc._filter_cache = {}
+        svc.bangumi = MagicMock()
+        svc.rss = MagicMock()
+        svc.torrent = MagicMock()
+        svc.add = MagicMock()
+        svc.commit = MagicMock()
+
+        svc.rss.search_id.return_value = None
+
+        result = await svc.preview(999)
+
+        assert result == []
