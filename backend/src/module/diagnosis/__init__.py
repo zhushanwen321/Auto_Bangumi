@@ -1,3 +1,4 @@
+from .collector import DiagnosisCollector
 from .models import (
     AnimeDiagnosis,
     DiagnosisIssue,
@@ -9,6 +10,7 @@ from .models import (
 
 __all__ = [
     "AnimeDiagnosis",
+    "DiagnosisCollector",
     "DiagnosisIssue",
     "DiagnosisReport",
     "FixAction",

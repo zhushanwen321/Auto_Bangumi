@@ -10,6 +10,8 @@ from module.diagnosis.models import (
     PreviewItem,
     TorrentDiagnosis,
 )
+from module.diagnosis.collector import DiagnosisCollector
+from module.models import Bangumi
 
 
 class TestDiagnosisIssue:
@@ -113,3 +115,58 @@ class TestDiagnosisReport:
         after = datetime.now(timezone.utc)
         assert before <= report.scanned_at <= after
         assert report.errors == ["连接超时"]
+
+
+class TestDiagnosisCollector:
+    def test_record_parse(self):
+        c = DiagnosisCollector()
+        c.record_parse("test torrent", None)
+        c.record_parse("[Sub] Title S01E01", Bangumi(title_raw="Title"))
+        assert len(c._records) == 2
+        assert c._records["test torrent"].parse_result is None
+        assert c._records["[Sub] Title S01E01"].parse_result is not None
+
+    def test_record_match_result(self):
+        c = DiagnosisCollector()
+        c.record_match_result("t1", matched=None, filter_passed=None, filter_reason=None)
+        c.record_match_result("t2", matched=Bangumi(id=1), filter_passed=True, filter_reason=None)
+        assert c._records["t1"].match_result is None
+        assert c._records["t2"].match_result is not None
+        assert c._records["t2"].filter_passed is True
+
+    def test_record_bangumi_create(self):
+        c = DiagnosisCollector()
+        c.record_bangumi_create("t1", Bangumi(title_raw="Title"))
+        assert c._records["t1"].bangumi_created is True
+        c.record_bangumi_create("t2", None, error="Mikan 超时")
+        assert c._records["t2"].bangumi_created is False
+        assert c._records["t2"].bangumi_create_error == "Mikan 超时"
+
+    def test_build_report_groups_by_title_raw(self):
+        c = DiagnosisCollector()
+        b1 = Bangumi(title_raw="Title A", id=1)
+        b2 = Bangumi(title_raw="Title B")
+        c.record_parse("[Sub] Title A S01E01", b1)
+        c.record_match_result("[Sub] Title A S01E01", b1, True, None)
+        c.record_parse("[Sub] Title A S01E02", b1)
+        c.record_match_result("[Sub] Title A S01E02", b1, True, None)
+        c.record_parse("[Sub] Title B S01E01", b2)
+        c.record_match_result("[Sub] Title B S01E01", None, None, None)
+        report = c.build_report(rss_id=1, rss_url="http://test")
+        assert len(report.anime_list) == 2
+        a = next(a for a in report.anime_list if a.anime_title == "Title A")
+        assert len(a.torrents) == 2
+        assert a.status == "ok"
+        b = next(a for a in report.anime_list if a.anime_title == "Title B")
+        assert len(b.torrents) == 1
+        assert b.status == "warning"
+
+    def test_build_report_filters_by_title(self):
+        c = DiagnosisCollector()
+        c.record_parse("t1", Bangumi(title_raw="Keep", id=1))
+        c.record_match_result("t1", Bangumi(id=1), True, None)
+        c.record_parse("t2", Bangumi(title_raw="Skip"))
+        c.record_match_result("t2", None, None, None)
+        report = c.build_report(1, "http://test", anime_titles=["Keep"])
+        assert len(report.anime_list) == 1
+        assert report.anime_list[0].anime_title == "Keep"
