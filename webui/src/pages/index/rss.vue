@@ -86,12 +86,9 @@ const rssColumns = computed<DataTableColumns<RSS>>(() => [
           ) : (
             <ab-tag type="inactive" title="inactive" />
           )}
-          <button
-            class="diag-btn"
-            onClick={() => openDiagnosis(rss)}
-          >
+          <ab-button size="small" onClick={() => openDiagnosis(rss)}>
             {t('rss.diagnosis.button')}
-          </button>
+          </ab-button>
         </div>
       );
     },
@@ -138,12 +135,12 @@ const rssRowKey = (row: RSS) => row.id;
                 :type="item.enabled ? 'active' : 'inactive'"
                 :title="item.enabled ? 'active' : 'inactive'"
               />
-              <button
-                class="diag-btn"
+              <ab-button
+                size="small"
                 @click="openDiagnosis(item as RSS)"
               >
                 {{ t('rss.diagnosis.button') }}
-              </button>
+              </ab-button>
             </div>
           </div>
         </template>
@@ -240,25 +237,4 @@ const rssRowKey = (row: RSS) => row.id;
   align-items: center;
 }
 
-// Diagnosis button (shared between desktop and mobile)
-.diag-btn {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  font-size: 10px;
-  font-weight: 500;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface-hover);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all var(--transition-fast);
-
-  &:hover {
-    border-color: var(--color-primary);
-    color: var(--color-primary);
-    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
-  }
-}
 </style>

@@ -58,12 +58,13 @@ function toggleTitle(title: string) {
   }
 }
 
+// show 为 true 时加载数据（immediate 处理组件挂载时已是 true 的情况）
 watch(show, async (val) => {
   if (val) {
     resetState();
     await loadPreview();
   }
-});
+}, { immediate: true });
 
 function resetState() {
   step.value = 'preview';
@@ -186,7 +187,7 @@ function close() {
               <NSpin :show="previewLoading">
                 <!-- Empty state -->
                 <div v-if="!previewLoading && previewList.length === 0" class="diag-empty">
-                  {{ t('rss.diagnosis.rss_not_found') }}
+                  {{ t('rss.diagnosis.no_torrents') }}
                 </div>
 
                 <!-- Select all -->

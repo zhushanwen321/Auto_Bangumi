@@ -4,7 +4,7 @@ from dataclasses import fields, is_dataclass
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from module.diagnosis.models import FixAction
@@ -50,6 +50,9 @@ class FixRequest(BaseModel):
 )
 async def preview(rss_id: int):
     with DiagnosisService() as svc:
+        rss = svc.rss.search_id(rss_id)
+        if not rss:
+            raise HTTPException(status_code=404, detail="RSS not found")
         items = await svc.preview(rss_id)
     return {"data": [_to_dict(i) for i in items]}
 

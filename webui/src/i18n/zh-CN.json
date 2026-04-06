@@ -291,6 +291,7 @@
       "close": "关闭",
       "back": "返回",
       "no_data": "无法获取数据",
+      "no_torrents": "该 RSS 源没有找到种子",
       "rss_not_found": "RSS 不存在",
       "anime_titles_label": "选择要诊断的番剧"
     }

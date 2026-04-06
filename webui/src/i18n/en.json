@@ -291,6 +291,7 @@
       "close": "Close",
       "back": "Back",
       "no_data": "Cannot fetch data",
+      "no_torrents": "No torrents found in this RSS feed",
       "rss_not_found": "RSS not found",
       "anime_titles_label": "Select anime to diagnose"
     }
