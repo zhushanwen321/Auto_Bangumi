@@ -106,16 +106,22 @@
   "episode_manager": {
     "title": "Episode Manager",
     "empty": "No torrent records found",
+    "scan_empty": "No matching torrents found in RSS",
+    "no_rss": "No RSS link configured",
     "selected_count": "{selected}/{total} selected",
-    "status": {
-      "downloaded": "Downloaded",
-      "downloading": "Downloading",
-      "not_downloaded": "Not Downloaded"
+    "action": {
+      "downloaded": "Downloadable",
+      "filtered": "Filtered"
     },
-    "footer_stats": "{total} episodes, {downloaded} downloaded",
+    "matched_pattern": "Matched: {pattern}",
+    "filter_reason": "Reason: {reason}",
+    "footer_stats": "{total} items, {downloaded} downloadable",
     "recollect_btn": "Recollect ({count})",
-    "recollect_success": "Successfully recollected {count} episode(s)",
-    "recollect_failed": "Failed to recollect episodes"
+    "recollect_success": "Successfully recollected {count} item(s)",
+    "recollect_failed": "Failed to recollect episodes",
+    "report_title": "Match Report",
+    "report_expand": "Expand Report",
+    "report_collapse": "Collapse Report"
   },
   "downloader": {
     "hit": "Please set up the downloader",

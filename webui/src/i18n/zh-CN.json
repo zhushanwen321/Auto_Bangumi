@@ -106,16 +106,22 @@
   "episode_manager": {
     "title": "集数管理",
     "empty": "暂无种子记录",
+    "scan_empty": "RSS 中无匹配当前番剧的种子",
+    "no_rss": "未配置 RSS 链接",
     "selected_count": "已选 {selected}/{total} 项",
-    "status": {
-      "downloaded": "已下载",
-      "downloading": "下载中",
-      "not_downloaded": "未下载"
+    "action": {
+      "downloaded": "可下载",
+      "filtered": "已过滤"
     },
-    "footer_stats": "共 {total} 集，已下载 {downloaded} 集",
+    "matched_pattern": "匹配: {pattern}",
+    "filter_reason": "原因: {reason}",
+    "footer_stats": "共 {total} 条，可下载 {downloaded} 条",
     "recollect_btn": "重新收集下载 ({count})",
-    "recollect_success": "成功重新收集 {count} 集",
-    "recollect_failed": "重新收集失败"
+    "recollect_success": "成功重新收集 {count} 条",
+    "recollect_failed": "重新收集失败",
+    "report_title": "匹配报告",
+    "report_expand": "展开报告",
+    "report_collapse": "收起报告"
   },
   "downloader": {
     "hit": "请设置下载器",

@@ -5,6 +5,7 @@ import type {
   DetectOffsetRequest,
   DetectOffsetResponse,
   OffsetSuggestion,
+  ScanTorrentsResponse,
   TorrentDetail,
 } from '#/bangumi';
 import type { ApiSuccess } from '#/api';
@@ -268,6 +269,27 @@ export const apiBangumi = {
     const { data } = await axios.post<ApiSuccess>(
       `api/v1/bangumi/${bangumiId}/recollect`,
       { torrent_ids: torrentIds }
+    );
+    return data;
+  },
+
+  /**
+   * 实时从 RSS 扫描番剧种子，不写入数据库
+   */
+  async scanTorrents(bangumiId: number) {
+    const { data } = await axios.post<ScanTorrentsResponse>(
+      `api/v1/bangumi/${bangumiId}/scan-torrents`
+    );
+    return data;
+  },
+
+  /**
+   * 按种子 URL 列表提交下载
+   */
+  async recollectByUrls(bangumiId: number, torrentUrls: string[]) {
+    const { data } = await axios.post<ApiSuccess>(
+      `api/v1/bangumi/${bangumiId}/recollect-by-urls`,
+      { torrent_urls: torrentUrls }
     );
     return data;
   },
