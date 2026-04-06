@@ -164,7 +164,12 @@ class RSSEngine(Database):
             collector.record_match_result(torrent.name, None, None, None)
         return None
 
-    async def refresh_rss(self, client: DownloadClient, rss_id: Optional[int] = None):
+    async def refresh_rss(
+        self,
+        client: DownloadClient,
+        rss_id: Optional[int] = None,
+        collector: DiagnosisCollector | None = None,
+    ):
         # Get All RSS Items
         if not rss_id:
             rss_items: list[RSSItem] = self.rss.search_active()
@@ -185,11 +190,16 @@ class RSSEngine(Database):
             rss_item.last_error = error
             self.add(rss_item)
             for torrent in new_torrents:
-                matched_data = self.match_torrent(torrent)
+                matched_data = self.match_torrent(torrent, collector=collector)
                 if matched_data:
-                    if await client.add_torrent(torrent, matched_data):
+                    dl_result = await client.add_torrent(torrent, matched_data)
+                    if dl_result:
                         logger.debug("[Engine] Add torrent %s to client", torrent.name)
                     torrent.downloaded = True
+                    if collector:
+                        collector.record_download(torrent.name, bool(dl_result))
+                elif collector:
+                    collector.record_download(torrent.name, False)
             # Add all torrents to database
             self.torrent.add_all(new_torrents)
         self.commit()

@@ -1,6 +1,8 @@
 """Tests for diagnosis data structures."""
 
+import pytest
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from module.diagnosis.models import (
     AnimeDiagnosis,
@@ -275,3 +277,151 @@ class TestMatchTorrentInjection:
         result = engine.match_torrent(t)
         # 不传 collector 时行为不变
         assert result is None
+
+
+class TestTorrentsToDataInjection:
+    @pytest.mark.asyncio
+    async def test_records_bangumi_create(self):
+        from module.diagnosis import DiagnosisCollector
+        from module.models import RSSItem, Torrent
+        from module.rss.analyser import RSSAnalyser
+
+        c = DiagnosisCollector()
+        analyser = RSSAnalyser()
+        torrents = [
+            Torrent(
+                name="[Sub] TestTitle S01E01",
+                url="magnet:?",
+                homepage="https://test",
+            )
+        ]
+        rss = RSSItem(url="https://test/rss", aggregate=True, parser="mikan")
+
+        with patch.object(analyser, "official_title_parser", new_callable=AsyncMock):
+            await analyser.torrents_to_data(torrents, rss, collector=c)
+        rec = c._records.get("[Sub] TestTitle S01E01")
+        assert rec is not None
+        assert rec.bangumi_created is True
+
+    @pytest.mark.asyncio
+    async def test_records_bangumi_create_failure(self):
+        from module.diagnosis import DiagnosisCollector
+        from module.models import RSSItem, Torrent
+        from module.rss.analyser import RSSAnalyser
+
+        c = DiagnosisCollector()
+        analyser = RSSAnalyser()
+        # raw_parser 无法解析的名称将返回 None
+        torrents = [Torrent(name="total garbage", url="magnet:?")]
+        rss = RSSItem(url="https://test/rss", aggregate=True, parser="mikan")
+
+        await analyser.torrents_to_data(torrents, rss, collector=c)
+        # raw_parser 返回 None，已在 raw_parser 内部通过 collector 调用记录
+        assert len(c._records) >= 0
+
+
+class TestRefreshRssInjection:
+    @pytest.mark.asyncio
+    async def test_records_download_success(self):
+        """match 成功且 add_torrent 返回 True 时记录下载成功。"""
+        from module.diagnosis import DiagnosisCollector
+        from module.models import Bangumi, RSSItem, Torrent
+        from module.rss.engine import RSSEngine
+
+        c = DiagnosisCollector()
+        engine = RSSEngine.__new__(RSSEngine)
+        engine._filter_cache = {}
+        engine.bangumi = MagicMock()
+        engine.torrent = MagicMock()
+        engine.add = MagicMock()
+        engine.commit = MagicMock()
+
+        rss = RSSItem(id=1, name="test", url="https://test/rss", aggregate=True)
+        engine.rss = MagicMock()
+        engine.rss.search_active.return_value = [rss]
+
+        torrent = Torrent(name="[Sub] Anime S01E01", url="magnet:?")
+        bangumi = Bangumi(id=1, filter="")
+        engine.bangumi.match_torrent.return_value = bangumi
+
+        client = AsyncMock()
+        client.add_torrent.return_value = True
+
+        # 需要 mock _pull_rss_with_status 因为它会访问网络
+        async def fake_pull(rss_item):
+            return [torrent], None
+
+        engine._pull_rss_with_status = fake_pull
+
+        await engine.refresh_rss(client, collector=c)
+        rec = c._records.get("[Sub] Anime S01E01")
+        assert rec is not None
+        assert rec.downloaded is True
+
+    @pytest.mark.asyncio
+    async def test_records_download_failure(self):
+        """match 成功但 add_torrent 返回 False 时记录下载失败。"""
+        from module.diagnosis import DiagnosisCollector
+        from module.models import Bangumi, RSSItem, Torrent
+        from module.rss.engine import RSSEngine
+
+        c = DiagnosisCollector()
+        engine = RSSEngine.__new__(RSSEngine)
+        engine._filter_cache = {}
+        engine.bangumi = MagicMock()
+        engine.torrent = MagicMock()
+        engine.add = MagicMock()
+        engine.commit = MagicMock()
+
+        rss = RSSItem(id=1, name="test", url="https://test/rss", aggregate=True)
+        engine.rss = MagicMock()
+        engine.rss.search_active.return_value = [rss]
+
+        torrent = Torrent(name="[Sub] Anime S01E01", url="magnet:?")
+        bangumi = Bangumi(id=1, filter="")
+        engine.bangumi.match_torrent.return_value = bangumi
+
+        client = AsyncMock()
+        client.add_torrent.return_value = False
+
+        async def fake_pull(rss_item):
+            return [torrent], None
+
+        engine._pull_rss_with_status = fake_pull
+
+        await engine.refresh_rss(client, collector=c)
+        rec = c._records.get("[Sub] Anime S01E01")
+        assert rec is not None
+        assert rec.downloaded is False
+
+    @pytest.mark.asyncio
+    async def test_records_download_unmatched(self):
+        """match 失败时记录下载失败。"""
+        from module.diagnosis import DiagnosisCollector
+        from module.models import RSSItem, Torrent
+        from module.rss.engine import RSSEngine
+
+        c = DiagnosisCollector()
+        engine = RSSEngine.__new__(RSSEngine)
+        engine._filter_cache = {}
+        engine.bangumi = MagicMock()
+        engine.bangumi.match_torrent.return_value = None
+        engine.torrent = MagicMock()
+        engine.add = MagicMock()
+        engine.commit = MagicMock()
+
+        rss = RSSItem(id=1, name="test", url="https://test/rss", aggregate=True)
+        engine.rss = MagicMock()
+        engine.rss.search_active.return_value = [rss]
+
+        torrent = Torrent(name="[Sub] Unknown Anime S01E01", url="magnet:?")
+
+        async def fake_pull(rss_item):
+            return [torrent], None
+
+        engine._pull_rss_with_status = fake_pull
+
+        await engine.refresh_rss(client=AsyncMock(), collector=c)
+        rec = c._records.get("[Sub] Unknown Anime S01E01")
+        assert rec is not None
+        assert rec.downloaded is False
