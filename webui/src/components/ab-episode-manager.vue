@@ -2,7 +2,7 @@
 import { Close } from '@icon-park/vue-next'
 import { NSpin, useMessage } from 'naive-ui'
 import type { BangumiRule } from '#/bangumi'
-import type { TorrentDetail } from '#/bangumi'
+import type { ScannedTorrent, ScanTorrentsResponse } from '#/bangumi'
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -18,8 +18,9 @@ const message = useMessage()
 const show = defineModel('show', { default: false })
 const loading = ref(false)
 const recollecting = ref(false)
-const torrents = ref<TorrentDetail[]>([])
-const selectedIds = ref<Set<number>>(new Set())
+const scanResult = ref<ScanTorrentsResponse | null>(null)
+const selectedUrls = ref<Set<string>>(new Set())
+const reportExpanded = ref(false)
 
 watch(show, async (val) => {
   if (val) {
@@ -29,64 +30,82 @@ watch(show, async (val) => {
 
 async function fetchTorrents() {
   loading.value = true
+  scanResult.value = null
+  selectedUrls.value = new Set()
   try {
-    torrents.value = await apiBangumi.getTorrents(props.bangumi.id)
-    const newSelected = new Set<number>()
-    for (const t of torrents.value) {
-      if (t.status === 'not_downloaded') {
-        newSelected.add(t.id)
+    scanResult.value = await apiBangumi.scanTorrents(props.bangumi.id)
+    const newSelected = new Set<string>()
+    for (const torrent of scanResult.value.torrents) {
+      if (torrent.download_action === 'downloaded') {
+        newSelected.add(torrent.url)
       }
     }
-    selectedIds.value = newSelected
+    selectedUrls.value = newSelected
   } finally {
     loading.value = false
   }
 }
 
+const downloadedTorrents = computed(() =>
+  scanResult.value?.torrents.filter((t) => t.download_action === 'downloaded') ?? []
+)
+
+const filteredTorrents = computed(() =>
+  scanResult.value?.torrents.filter((t) => t.download_action === 'filtered') ?? []
+)
+
+const allTorrents = computed(() => [
+  ...downloadedTorrents.value,
+  ...filteredTorrents.value,
+])
+
+const selectableCount = computed(() => downloadedTorrents.value.length)
+
 const isAllSelected = computed(() => {
-  if (torrents.value.length === 0) return false
-  return selectedIds.value.size === torrents.value.length
+  if (selectableCount.value === 0) return false
+  return selectedUrls.value.size === selectableCount.value
 })
 
-const selectedCount = computed(() => selectedIds.value.size)
-const totalCount = computed(() => torrents.value.length)
-const downloadedCount = computed(
-  () => torrents.value.filter((t) => t.status === 'downloaded').length
-)
+const selectedCount = computed(() => selectedUrls.value.size)
+const totalCount = computed(() => scanResult.value?.torrents.length ?? 0)
+const hasTorrents = computed(() => (scanResult.value?.torrents.length ?? 0) > 0)
 
 function toggleAll() {
   if (isAllSelected.value) {
-    selectedIds.value = new Set()
+    selectedUrls.value = new Set()
   } else {
-    selectedIds.value = new Set(torrents.value.map((t) => t.id))
+    selectedUrls.value = new Set(downloadedTorrents.value.map((t) => t.url))
   }
 }
 
-function toggleItem(id: number) {
-  const newSet = new Set(selectedIds.value)
-  if (newSet.has(id)) {
-    newSet.delete(id)
+function toggleItem(url: string) {
+  const torrent = scanResult.value?.torrents.find((t) => t.url === url)
+  if (!torrent || torrent.download_action === 'filtered') return
+
+  const newSet = new Set(selectedUrls.value)
+  if (newSet.has(url)) {
+    newSet.delete(url)
   } else {
-    newSet.add(id)
+    newSet.add(url)
   }
-  selectedIds.value = newSet
+  selectedUrls.value = newSet
 }
 
-function isSelected(id: number) {
-  return selectedIds.value.has(id)
+function isSelected(url: string) {
+  return selectedUrls.value.has(url)
 }
 
 async function recollect() {
-  if (selectedIds.value.size === 0) return
+  if (selectedUrls.value.size === 0) return
   recollecting.value = true
   try {
-    await apiBangumi.recollectTorrents(
+    await apiBangumi.recollectByUrls(
       props.bangumi.id,
-      Array.from(selectedIds.value)
+      Array.from(selectedUrls.value)
     )
     message.success(
       t('episode_manager.recollect_success', {
-        count: selectedIds.value.size,
+        count: selectedUrls.value.size,
       })
     )
     show.value = false
@@ -107,7 +126,6 @@ function close() {
     <Transition name="modal">
       <div v-if="show" class="episode-backdrop" @click.self="close">
         <div class="episode-modal" role="dialog" aria-modal="true">
-          <!-- Header -->
           <header class="episode-header">
             <div>
               <h2 class="episode-title">{{ $t('episode_manager.title') }}</h2>
@@ -121,29 +139,19 @@ function close() {
             </button>
           </header>
 
-          <!-- Content -->
           <div class="episode-content">
-            <!-- Loading -->
             <div v-if="loading" class="episode-loading">
               <NSpin :size="24" />
             </div>
 
-            <!-- Empty state -->
-            <div v-else-if="torrents.length === 0" class="episode-empty">
-              <p>{{ $t('episode_manager.empty') }}</p>
+            <div v-else-if="!hasTorrents" class="episode-empty">
+              <p>{{ $t('episode_manager.scan_empty') }}</p>
             </div>
 
-            <!-- Torrent list -->
             <template v-else>
-              <!-- Select all bar -->
               <div class="select-bar">
                 <label class="select-all" @click="toggleAll">
-                  <input
-                    type="checkbox"
-                    :checked="isAllSelected"
-                    class="checkbox"
-                    @click.stop
-                  />
+                  <input type="checkbox" :checked="isAllSelected" class="checkbox" @click.stop />
                   <span>{{ $t('common.selectAll') }}</span>
                 </label>
                 <span class="select-count">
@@ -151,37 +159,62 @@ function close() {
                 </span>
               </div>
 
-              <!-- Torrent rows -->
               <div class="torrent-list">
                 <div
-                  v-for="torrent in torrents"
-                  :key="torrent.id"
+                  v-for="torrent in allTorrents"
+                  :key="torrent.url"
                   class="torrent-row"
-                  :class="{ 'torrent-row--selected': isSelected(torrent.id) }"
-                  @click="toggleItem(torrent.id)"
+                  :class="{
+                    'torrent-row--selected': isSelected(torrent.url),
+                    'torrent-row--filtered': torrent.download_action === 'filtered'
+                  }"
+                  @click="toggleItem(torrent.url)"
                 >
                   <input
+                    v-if="torrent.download_action === 'downloaded'"
                     type="checkbox"
-                    :checked="isSelected(torrent.id)"
+                    :checked="isSelected(torrent.url)"
                     class="checkbox"
                     @click.stop
                   />
-                  <span class="torrent-name" :title="torrent.name">{{ torrent.name }}</span>
-                  <span
-                    class="torrent-status"
-                    :class="`torrent-status--${torrent.status}`"
-                  >
-                    {{ $t(`episode_manager.status.${torrent.status}`) }}
+                  <span v-else class="filter-icon" :title="torrent.filter_reason ?? ''">&#9888;</span>
+
+                  <div class="torrent-info">
+                    <span class="torrent-name" :title="torrent.name">{{ torrent.name }}</span>
+                    <span v-if="torrent.matched_pattern" class="torrent-detail">
+                      {{ $t('episode_manager.matched_pattern', { pattern: torrent.matched_pattern }) }}
+                    </span>
+                    <span
+                      v-if="torrent.download_action === 'filtered' && torrent.filter_reason"
+                      class="torrent-detail torrent-detail--reason"
+                    >
+                      {{ $t('episode_manager.filter_reason', { reason: torrent.filter_reason }) }}
+                    </span>
+                  </div>
+
+                  <span class="torrent-action" :class="`torrent-action--${torrent.download_action}`">
+                    {{ $t(`episode_manager.action.${torrent.download_action}`) }}
                   </span>
+                </div>
+              </div>
+
+              <div v-if="scanResult?.report" class="report-section">
+                <button class="report-toggle" @click="reportExpanded = !reportExpanded">
+                  <span class="report-toggle-text">{{ $t('episode_manager.report_title') }}</span>
+                  <span class="report-toggle-icon">
+                    {{ reportExpanded ? $t('episode_manager.report_collapse') : $t('episode_manager.report_expand') }}
+                  </span>
+                </button>
+                <div v-if="reportExpanded" class="report-content">
+                  <pre>{{ scanResult.report }}</pre>
                 </div>
               </div>
             </template>
           </div>
 
-          <!-- Footer -->
-          <footer v-if="!loading && torrents.length > 0" class="episode-footer">
+          <footer v-if="!loading && hasTorrents" class="episode-footer">
             <span class="footer-stats">
-              {{ $t('episode_manager.footer_stats', { total: totalCount, downloaded: downloadedCount }) }}
+              {{ $t('episode_manager.footer_stats', { total: totalCount, downloaded: selectableCount }) }}
             </span>
             <button
               class="recollect-btn"
@@ -189,9 +222,7 @@ function close() {
               @click="recollect"
             >
               <NSpin v-if="recollecting" :size="14" />
-              <span v-else>
-                {{ $t('episode_manager.recollect_btn', { count: selectedCount }) }}
-              </span>
+              <span v-else>{{ $t('episode_manager.recollect_btn', { count: selectedCount }) }}</span>
             </button>
           </footer>
         </div>
@@ -322,7 +353,7 @@ function close() {
 
 .torrent-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   padding: 14px 20px;
   border-bottom: 1px solid var(--color-border);
@@ -336,11 +367,38 @@ function close() {
   &--selected {
     background: color-mix(in srgb, var(--color-primary) 6%, transparent);
   }
+
+  &--filtered {
+    opacity: 0.55;
+    cursor: default;
+
+    &:hover {
+      background: transparent;
+    }
+  }
+}
+
+.filter-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: #d97706;
+  margin-top: 1px;
+}
+
+.torrent-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .torrent-name {
-  flex: 1;
-  min-width: 0;
   font-size: 13px;
   color: var(--color-text);
   overflow: hidden;
@@ -348,26 +406,78 @@ function close() {
   white-space: nowrap;
 }
 
-.torrent-status {
+.torrent-detail {
+  font-size: 11px;
+  color: var(--color-text-muted);
+
+  &--reason {
+    color: #d97706;
+  }
+}
+
+.torrent-action {
   flex-shrink: 0;
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 11px;
   font-weight: 500;
+  margin-top: 1px;
 
   &--downloaded {
     background: #dcfce7;
     color: #16a34a;
   }
 
-  &--downloading {
-    background: #dbeafe;
-    color: #2563eb;
-  }
-
-  &--not_downloaded {
+  &--filtered {
     background: #fef3c7;
     color: #d97706;
+  }
+}
+
+.report-section {
+  border-top: 1px solid var(--color-border);
+}
+
+.report-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+
+  &:hover {
+    background: var(--color-surface-hover);
+  }
+}
+
+.report-toggle-text {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.report-toggle-icon {
+  color: var(--color-text-muted);
+}
+
+.report-content {
+  padding: 0 20px 12px;
+  max-height: 200px;
+  overflow-y: auto;
+
+  pre {
+    margin: 0;
+    padding: 8px 12px;
+    background: var(--color-surface-hover);
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--color-text-secondary);
+    white-space: pre-wrap;
+    word-break: break-all;
   }
 }
 
