@@ -5,7 +5,10 @@ from .response import APIResponse, ResponseModel
 from .rss import RSSItem, RSSUpdate
 from .torrent import (
     EpisodeFile,
+    RecollectByUrlsRequest,
     RecollectRequest,
+    ScanTorrentsResponse,
+    ScannedTorrent,
     SubtitleFile,
     Torrent,
     TorrentDetail,

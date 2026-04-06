@@ -50,3 +50,24 @@ class TorrentDetail(BaseModel):
 class RecollectRequest(BaseModel):
     """Request body for recollecting torrents."""
     torrent_ids: list[int]
+
+
+class ScannedTorrent(BaseModel):
+    """扫描结果中的单个种子信息。"""
+    name: str
+    url: str
+    download_action: str  # "downloaded" | "filtered"
+    matched_pattern: Optional[str] = None
+    pattern_type: Optional[str] = None  # "title_raw" | "alias"
+    filter_reason: Optional[str] = None
+
+
+class ScanTorrentsResponse(BaseModel):
+    """scan-torrents 端点的响应体。"""
+    report: str
+    torrents: list[ScannedTorrent]
+
+
+class RecollectByUrlsRequest(BaseModel):
+    """recollect-by-urls 端点的请求体。"""
+    torrent_urls: list[str]
