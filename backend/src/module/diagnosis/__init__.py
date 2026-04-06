@@ -7,12 +7,14 @@ from .models import (
     PreviewItem,
     TorrentDiagnosis,
 )
+from .service import DiagnosisService
 
 __all__ = [
     "AnimeDiagnosis",
     "DiagnosisCollector",
     "DiagnosisIssue",
     "DiagnosisReport",
+    "DiagnosisService",
     "FixAction",
     "PreviewItem",
     "TorrentDiagnosis",
