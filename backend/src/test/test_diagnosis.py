@@ -12,6 +12,7 @@ from module.diagnosis.models import (
 )
 from module.diagnosis.collector import DiagnosisCollector
 from module.models import Bangumi
+from module.parser import TitleParser
 
 
 class TestDiagnosisIssue:
@@ -170,3 +171,52 @@ class TestDiagnosisCollector:
         report = c.build_report(1, "http://test", anime_titles=["Keep"])
         assert len(report.anime_list) == 1
         assert report.anime_list[0].anime_title == "Keep"
+
+
+class TestRawParserInjection:
+    def test_raw_parser_with_collector_records_result(self):
+        c = DiagnosisCollector()
+        result = TitleParser.raw_parser("[桜都字幕组] 葬送的芙莉莲 S01E01", collector=c)
+        assert result is not None
+        assert len(c._records) == 1
+        rec = list(c._records.values())[0]
+        assert rec.parse_result is not None
+        assert rec.parse_result.title_raw is not None
+
+    def test_raw_parser_without_collector_unchanged(self):
+        result = TitleParser.raw_parser("[桜都字幕组] 葬送的芙莉莲 S01E01")
+        assert result is not None
+
+    def test_raw_parser_collects_failure(self):
+        c = DiagnosisCollector()
+        result = TitleParser.raw_parser("total garbage 12345 !!!", collector=c)
+        # 无论 raw_parser 是否返回 None，collector 都应该记录
+        rec = list(c._records.values())[0]
+        assert rec.parse_result is None
+
+
+class TestMatchTorrentInjection:
+    def test_unmatched_torrent_records_in_collector(self):
+        from module.diagnosis import DiagnosisCollector
+        from module.models import Torrent
+        from module.rss.engine import RSSEngine
+
+        c = DiagnosisCollector()
+        with RSSEngine() as engine:
+            t = Torrent(name="[Sub] 完全不存在的番剧 XYZ S99E99", url="magnet:?")
+            result = engine.match_torrent(t, collector=c)
+        assert result is None
+        rec = c._records.get("[Sub] 完全不存在的番剧 XYZ S99E99")
+        assert rec is not None
+        assert rec.match_result is None
+        assert rec.filter_passed is None
+
+    def test_match_without_collector_unchanged(self):
+        from module.models import Torrent
+        from module.rss.engine import RSSEngine
+
+        with RSSEngine() as engine:
+            t = Torrent(name="[Sub] Test S01E01", url="magnet:?")
+            result = engine.match_torrent(t)
+        # 不传 collector 时行为不变
+        assert result is None or hasattr(result, "id")
