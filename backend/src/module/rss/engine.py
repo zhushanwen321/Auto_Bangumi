@@ -7,6 +7,7 @@ from typing import Optional
 from module.database import Database, engine
 from module.downloader import DownloadClient
 from module.models import Bangumi, ResponseModel, RSSItem, Torrent
+from module.models.torrent import ScannedTorrent
 from module.network import RequestContent
 from module.rss.match_report import MatchCollector, MatchResult
 
@@ -311,3 +312,115 @@ class RSSEngine(Database):
                     msg_en=f"[Engine] Download {bangumi.official_title} failed.",
                     msg_zh=f"[Engine] 下载 {bangumi.official_title} 失败。",
                 )
+
+    async def scan_bangumi_torrents(
+        self, bangumi_id: int
+    ) -> tuple[list[ScannedTorrent], str]:
+        """实时扫描指定番剧的 RSS 源，返回所有匹配种子及报告文本。
+
+        与 refresh_rss 不同，此方法不写入数据库，仅用于预览。
+
+        Args:
+            bangumi_id: 番剧 ID。
+
+        Returns:
+            (匹配种子列表, 报告文本) 元组。
+        """
+        bangumi = self.bangumi.search_id(bangumi_id)
+        if not bangumi:
+            return [], f"未找到番组 id={bangumi_id}"
+
+        if not bangumi.rss_link:
+            return [], "未配置 RSS 链接"
+
+        rss_urls = [
+            url.strip() for url in bangumi.rss_link.split(",") if url.strip()
+        ]
+
+        # 单次 RequestContent 覆盖全部 URL，避免反复创建连接
+        all_raw_torrents: list[Torrent] = []
+        errors: list[str] = []
+        try:
+            async with RequestContent() as req:
+                for rss_url in rss_urls:
+                    try:
+                        torrents = await req.get_torrents(rss_url)
+                        all_raw_torrents.extend(torrents)
+                    except Exception as e:
+                        logger.warning(
+                            f"[Engine] scan_bangumi_torrents: 拉取 RSS 失败 {rss_url}: {e}"
+                        )
+                        errors.append(f"{rss_url}: {e}")
+        except Exception as e:
+            return [], f"RSS 拉取失败: {e}"
+
+        if errors and not all_raw_torrents:
+            return [], f"RSS 拉取失败: {'; '.join(errors)}"
+
+        # 按 URL 去重（多个 RSS 源可能包含相同种子）
+        seen_urls: set[str] = set()
+        unique_torrents: list[Torrent] = []
+        for t in all_raw_torrents:
+            if t.url not in seen_urls:
+                seen_urls.add(t.url)
+                unique_torrents.append(t)
+
+        # 双条件匹配：bangumi_id 或 matched_bangumi 任一命中即可
+        scanned: list[ScannedTorrent] = []
+        for torrent in unique_torrents:
+            matched_bangumi, match_result = self.match_torrent_with_details(
+                torrent
+            )
+
+            is_current_bangumi = (
+                torrent.bangumi_id == bangumi_id
+                or match_result.matched_bangumi == bangumi.official_title
+            )
+            if is_current_bangumi and match_result.download_action in (
+                "downloaded",
+                "filtered",
+            ):
+                scanned.append(
+                    ScannedTorrent(
+                        name=torrent.name,
+                        url=torrent.url,
+                        download_action=match_result.download_action,
+                        matched_pattern=match_result.matched_pattern,
+                        pattern_type=match_result.pattern_type,
+                        filter_reason=match_result.filter_reason,
+                    )
+                )
+
+        report = self._build_scan_report(bangumi.official_title, scanned)
+        return scanned, report
+
+    @staticmethod
+    def _build_scan_report(
+        official_title: str, scanned: list[ScannedTorrent]
+    ) -> str:
+        """生成扫描结果的内联报告文本。"""
+        if not scanned:
+            return f"RSS 中无匹配「{official_title}」的种子"
+
+        lines = [f"扫描「{official_title}」结果:"]
+
+        downloaded = [t for t in scanned if t.download_action == "downloaded"]
+        filtered = [t for t in scanned if t.download_action == "filtered"]
+
+        if downloaded:
+            lines.append(f"\n[下载] 符合下载条件 ({len(downloaded)} 个):")
+            for t in downloaded:
+                lines.append(f"  + {t.name}")
+                if t.matched_pattern:
+                    lines.append(
+                        f'    匹配: {t.pattern_type or "pattern"}="{t.matched_pattern}"'
+                    )
+
+        if filtered:
+            lines.append(f"\n[过滤] 匹配但被过滤 ({len(filtered)} 个):")
+            for t in filtered:
+                lines.append(f"  - {t.name}")
+                if t.filter_reason:
+                    lines.append(f"    原因: {t.filter_reason}")
+
+        return "\n".join(lines)
