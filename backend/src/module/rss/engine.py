@@ -1,13 +1,18 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import re
 from datetime import datetime, timezone
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from module.database import Database, engine
 from module.downloader import DownloadClient
 from module.models import Bangumi, ResponseModel, RSSItem, Torrent
 from module.network import RequestContent
+
+if TYPE_CHECKING:
+    from module.diagnosis.collector import DiagnosisCollector
 
 logger = logging.getLogger(__name__)
 
@@ -131,15 +136,32 @@ class RSSEngine(Database):
                 )
         return self._filter_cache[filter_str]
 
-    def match_torrent(self, torrent: Torrent) -> Optional[Bangumi]:
+    def match_torrent(
+        self,
+        torrent: Torrent,
+        collector: DiagnosisCollector | None = None,
+    ) -> Optional[Bangumi]:
         matched: Bangumi = self.bangumi.match_torrent(torrent.name)
         if matched:
             if matched.filter == "":
+                if collector:
+                    collector.record_match_result(torrent.name, matched, True, None)
                 return matched
             pattern = self._get_filter_pattern(matched.filter)
             if not pattern.search(torrent.name):
                 torrent.bangumi_id = matched.id
+                if collector:
+                    collector.record_match_result(torrent.name, matched, True, None)
                 return matched
+            else:
+                # 匹配成功但被过滤规则排除
+                if collector:
+                    collector.record_match_result(
+                        torrent.name, matched, False, matched.filter
+                    )
+                return None
+        if collector:
+            collector.record_match_result(torrent.name, None, None, None)
         return None
 
     async def refresh_rss(self, client: DownloadClient, rss_id: Optional[int] = None):

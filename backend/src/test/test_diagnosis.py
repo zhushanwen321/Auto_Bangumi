@@ -196,27 +196,82 @@ class TestRawParserInjection:
 
 
 class TestMatchTorrentInjection:
+    def _make_engine(self):
+        """创建不需要真实数据库的 RSSEngine 实例。"""
+        from unittest.mock import MagicMock
+        from module.rss.engine import RSSEngine
+
+        engine = RSSEngine.__new__(RSSEngine)
+        engine._filter_cache = {}
+        engine.bangumi = MagicMock()
+        return engine
+
     def test_unmatched_torrent_records_in_collector(self):
         from module.diagnosis import DiagnosisCollector
         from module.models import Torrent
-        from module.rss.engine import RSSEngine
 
         c = DiagnosisCollector()
-        with RSSEngine() as engine:
-            t = Torrent(name="[Sub] 完全不存在的番剧 XYZ S99E99", url="magnet:?")
-            result = engine.match_torrent(t, collector=c)
+        engine = self._make_engine()
+        engine.bangumi.match_torrent.return_value = None
+        t = Torrent(name="[Sub] 完全不存在的番剧 XYZ S99E99", url="magnet:?")
+        result = engine.match_torrent(t, collector=c)
         assert result is None
         rec = c._records.get("[Sub] 完全不存在的番剧 XYZ S99E99")
         assert rec is not None
         assert rec.match_result is None
         assert rec.filter_passed is None
 
+    def test_matched_no_filter_records_in_collector(self):
+        from module.diagnosis import DiagnosisCollector
+        from module.models import Torrent
+
+        c = DiagnosisCollector()
+        engine = self._make_engine()
+        engine.bangumi.match_torrent.return_value = Bangumi(id=1, filter="")
+        t = Torrent(name="[Sub] Test Anime S01E01", url="magnet:?")
+        result = engine.match_torrent(t, collector=c)
+        assert result is not None
+        rec = c._records.get("[Sub] Test Anime S01E01")
+        assert rec.match_result is not None
+        assert rec.filter_passed is True
+
+    def test_matched_filter_passed_records_in_collector(self):
+        from module.diagnosis import DiagnosisCollector
+        from module.models import Torrent
+
+        c = DiagnosisCollector()
+        engine = self._make_engine()
+        # filter="720" 排除含 720 的种子，但此种子名不含 720，应通过
+        engine.bangumi.match_torrent.return_value = Bangumi(id=2, filter="720")
+        t = Torrent(name="[Sub] Test Anime S01E01 1080p", url="magnet:?")
+        result = engine.match_torrent(t, collector=c)
+        assert result is not None
+        rec = c._records.get("[Sub] Test Anime S01E01 1080p")
+        assert rec.match_result is not None
+        assert rec.filter_passed is True
+
+    def test_matched_filter_excluded_records_in_collector(self):
+        from module.diagnosis import DiagnosisCollector
+        from module.models import Torrent
+
+        c = DiagnosisCollector()
+        engine = self._make_engine()
+        # filter="720" 排除含 720 的种子
+        engine.bangumi.match_torrent.return_value = Bangumi(id=3, filter="720")
+        t = Torrent(name="[Sub] Test Anime S01E01 720p", url="magnet:?")
+        result = engine.match_torrent(t, collector=c)
+        assert result is None
+        rec = c._records.get("[Sub] Test Anime S01E01 720p")
+        assert rec.match_result is not None
+        assert rec.filter_passed is False
+        assert rec.filter_reason == "720"
+
     def test_match_without_collector_unchanged(self):
         from module.models import Torrent
-        from module.rss.engine import RSSEngine
 
-        with RSSEngine() as engine:
-            t = Torrent(name="[Sub] Test S01E01", url="magnet:?")
-            result = engine.match_torrent(t)
+        engine = self._make_engine()
+        engine.bangumi.match_torrent.return_value = None
+        t = Torrent(name="[Sub] Test S01E01", url="magnet:?")
+        result = engine.match_torrent(t)
         # 不传 collector 时行为不变
-        assert result is None or hasattr(result, "id")
+        assert result is None
