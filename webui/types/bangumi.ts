@@ -113,3 +113,19 @@ export interface TorrentDetail {
   downloaded: boolean
   status: 'downloaded' | 'downloading' | 'not_downloaded'
 }
+
+/** 扫描种子结果，对应后端 ScannedTorrent */
+export interface ScannedTorrent {
+  name: string
+  url: string
+  download_action: 'downloaded' | 'filtered'
+  matched_pattern: string | null
+  pattern_type: 'title_raw' | 'alias' | null
+  filter_reason: string | null
+}
+
+/** 扫描种子响应，对应后端 ScanTorrentsResponse */
+export interface ScanTorrentsResponse {
+  report: string
+  torrents: ScannedTorrent[]
+}
