@@ -140,7 +140,7 @@ const rssRowKey = (row: RSS) => row.id;
               />
               <button
                 class="diag-btn"
-                @click="openDiagnosis(item)"
+                @click="openDiagnosis(item as RSS)"
               >
                 {{ t('rss.diagnosis.button') }}
               </button>
