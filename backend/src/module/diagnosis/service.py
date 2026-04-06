@@ -122,18 +122,12 @@ class DiagnosisService(RSSEngine):
             # 第三步：检查下载状态（诊断场景只检查数据库记录）
             if t.name in downloaded_map:
                 collector.record_download(t.name, downloaded_map[t.name])
-
-        # 聚合 RSS 需要额外检查 bangumi 创建状态（不执行创建，只查询）
-        if rss.aggregate:
-            for t in torrents:
-                parsed = TitleParser.raw_parser(t.name)
-                if parsed and parsed.title_raw:
-                    # 检查数据库中是否已有对应 bangumi 记录
-                    existing = self.bangumi.match_torrent(t.name)
-                    if existing:
-                        collector.record_bangumi_create(t.name, existing)
-                    else:
-                        collector.record_bangumi_create(t.name, None)
+            # 第四步（聚合 RSS）：检查 bangumi 创建状态
+            if rss.aggregate and parsed and parsed.title_raw:
+                existing = self.bangumi.match_torrent(t.name)
+                collector.record_bangumi_create(
+                    t.name, existing if existing else None
+                )
 
         return collector.build_report(rss_id, rss.url, anime_titles)
 
