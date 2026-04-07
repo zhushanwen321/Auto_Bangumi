@@ -13,11 +13,14 @@ logger = logging.getLogger(__name__)
 
 class RSSAnalyser(TitleParser):
     async def official_title_parser(self, bangumi: Bangumi, rss: RSSItem, torrent: Torrent):
+        tmdb_matched = False
+
         if rss.parser == "mikan":
             try:
                 bangumi.poster_link, bangumi.official_title = await self.mikan_parser(
                     torrent.homepage
                 )
+                tmdb_matched = True
             except AttributeError:
                 logger.warning("[Parser] Mikan torrent has no homepage info.")
                 pass
@@ -29,8 +32,59 @@ class RSSAnalyser(TitleParser):
             bangumi.year = year
             bangumi.season = season
             bangumi.poster_link = poster_link
+            # TMDB search failed when year and poster_link are both None
+            if year is not None or poster_link is not None:
+                tmdb_matched = True
         else:
             pass
+
+        # AI enhanced search: trigger when TMDB/Mikan both failed
+        if settings.experimental_openai.enable and not tmdb_matched:
+            from module.searcher.ai_matcher import AIMatcher
+
+            try:
+                kwargs = settings.experimental_openai.dict(exclude={"enable"})
+                matcher = AIMatcher(openai_config=kwargs)
+
+                async def tmdb_search_fn(keyword: str) -> list[dict]:
+                    from module.parser.analyser.tmdb_parser import tmdb_parser
+                    result = tmdb_parser(keyword, settings.rss_parser.language)
+                    if result is None:
+                        return []
+                    return [
+                        {
+                            "id": result.id,
+                            "title": result.title,
+                            "original_title": result.original_title,
+                        }
+                    ]
+
+                def tmdb_formatter(results: list[dict]) -> str:
+                    lines = []
+                    for i, r in enumerate(results):
+                        lines.append(
+                            f"{i + 1}. {r['title']} ({r.get('original_title', '')}) "
+                            f"[TMDB ID: {r['id']}]"
+                        )
+                    return "\n".join(lines)
+
+                match = await matcher.search_and_match(
+                    title=bangumi.title_raw,
+                    search_fn=tmdb_search_fn,
+                    result_formatter=tmdb_formatter,
+                    dedup_key=lambda x: x["id"],
+                )
+
+                if match and match.confidence >= 0.7:
+                    bangumi.official_title = match.matched_item["title"]
+                    logger.info(
+                        "[AI] Enhanced search matched: %s (confidence=%.2f)",
+                        bangumi.official_title,
+                        match.confidence,
+                    )
+            except Exception as e:
+                logger.warning("[AI] Enhanced search failed: %s", e)
+
         if bangumi.official_title:
             bangumi.official_title = re.sub(r"[/:.\\]", " ", bangumi.official_title)
 
