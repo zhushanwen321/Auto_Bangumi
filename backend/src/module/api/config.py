@@ -67,15 +67,19 @@ async def _trigger_dandanplay_batch():
         from module.database import Database
         from module.searcher.dandanplay import batch_update_dandanplay_titles
 
+        # 先在独立 session 中查询需要的记录（只取 id 和 official_title）
         with Database() as db:
             records = db.bangumi.get_bangumi_missing_dandanplay()
         if not records:
             logger.info("[Dandanplay] No missing titles to update")
             return
-        logger.info("[Dandanplay] Batch update triggered: %d records", len(records))
+        # 提取简单数据，避免 ORM 对象 detach 问题
+        record_data = [
+            {"id": r.id, "official_title": r.official_title} for r in records
+        ]
+        logger.info("[Dandanplay] Batch update triggered: %d records", len(record_data))
         await batch_update_dandanplay_titles(
-            records=records,
-            db=db,
+            records=record_data,
             app_id=settings.dandanplay.app_id,
             app_secret=settings.dandanplay.app_secret,
         )
@@ -99,8 +103,8 @@ async def update_config(config: Config):
         # 检测 rename_method 是否切换到 dandanplay，触发全量补全
         new_method = settings.bangumi_manage.rename_method
         if (
-            old_method != "dandanplay"
-            and new_method == "dandanplay"
+            old_method not in ("dandanplay", "subtitle_dandanplay")
+            and new_method in ("dandanplay", "subtitle_dandanplay")
             and settings.dandanplay.enable
         ):
             asyncio.create_task(_trigger_dandanplay_batch())

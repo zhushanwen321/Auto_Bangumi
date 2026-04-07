@@ -223,7 +223,8 @@ class DandanplayThread(ProgramStatus):
         while not self._dandanplay_stop_event.is_set():
             try:
                 if (
-                    settings.bangumi_manage.rename_method == "dandanplay"
+                    settings.bangumi_manage.rename_method
+                    in ("dandanplay", "subtitle_dandanplay")
                     and settings.dandanplay.enable
                 ):
                     from module.database import Database
@@ -237,7 +238,6 @@ class DandanplayThread(ProgramStatus):
 
                             await batch_update_dandanplay_titles(
                                 records=records,
-                                db=db.bangumi,
                                 app_id=settings.dandanplay.app_id,
                                 app_secret=settings.dandanplay.app_secret,
                             )

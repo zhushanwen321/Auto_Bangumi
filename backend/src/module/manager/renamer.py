@@ -332,7 +332,7 @@ class Renamer(DownloadClient):
                         b = bangumi_map[bangumi_id]
                         result[torrent_hash] = RenameInfo(
                             b.episode_offset, b.season_offset,
-                            getattr(b, "dandanplay_title", None),
+                            b.dandanplay_title,
                         )
                         continue
 
@@ -342,7 +342,7 @@ class Renamer(DownloadClient):
                         b = bangumi_map[bangumi_id]
                         result[torrent_hash] = RenameInfo(
                             b.episode_offset, b.season_offset,
-                            getattr(b, "dandanplay_title", None),
+                            b.dandanplay_title,
                         )
                         continue
 
@@ -351,7 +351,7 @@ class Renamer(DownloadClient):
                     if bangumi:
                         result[torrent_hash] = RenameInfo(
                             bangumi.episode_offset, bangumi.season_offset,
-                            getattr(bangumi, "dandanplay_title", None),
+                            bangumi.dandanplay_title,
                         )
                         continue
 
@@ -363,7 +363,7 @@ class Renamer(DownloadClient):
                     if bangumi:
                         result[torrent_hash] = RenameInfo(
                             bangumi.episode_offset, bangumi.season_offset,
-                            getattr(bangumi, "dandanplay_title", None),
+                            bangumi.dandanplay_title,
                         )
                         continue
 

@@ -75,26 +75,32 @@ async def fetch_dandanplay_title(
 
 
 async def batch_update_dandanplay_titles(
-    records: list, db, app_id: str, app_secret: str
+    records: list, app_id: str, app_secret: str
 ):
-    """批量更新弹弹 Play 番名。"""
+    """批量更新弹弹 Play 番名。内部管理数据库 session。"""
+    from module.database import Database
+
     client = DandanplayClient(app_id=app_id, app_secret=app_secret)
     for record in records:
+        record_id = record.id if hasattr(record, "id") else record["id"]
+        official_title = (
+            record.official_title
+            if hasattr(record, "official_title")
+            else record["official_title"]
+        )
         try:
-            title = await client.search(record.official_title)
-            db.update_dandanplay_title(record.id, title)
+            title = await client.search(official_title)
+            with Database() as db:
+                db.bangumi.update_dandanplay_title(record_id, title)
             if title:
                 logger.info(
                     "[Dandanplay] Matched '%s' → '%s'",
-                    record.official_title,
+                    official_title,
                     title,
                 )
             else:
-                logger.debug(
-                    "[Dandanplay] No match for '%s' (retry=%d)",
-                    record.official_title,
-                    record.dandanplay_retry_count,
-                )
+                logger.debug("[Dandanplay] No match for '%s'", official_title)
         except Exception as e:
-            logger.warning("[Dandanplay] Error updating '%s': %s", record.official_title, e)
-            db.update_dandanplay_title(record.id, None)
+            logger.warning("[Dandanplay] Error updating '%s': %s", official_title, e)
+            with Database() as db:
+                db.bangumi.update_dandanplay_title(record_id, None)

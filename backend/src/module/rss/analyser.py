@@ -133,9 +133,36 @@ class RSSAnalyser(TitleParser):
         if new_data:
             # Add to database
             engine.bangumi.add_all(new_data)
+            # 创建后触发弹弹 Play 番名获取
+            self._fetch_dandanplay_titles(new_data)
             return new_data
         else:
             return []
+
+    @staticmethod
+    def _fetch_dandanplay_titles(bangumi_list: list[Bangumi]):
+        """后台获取弹弹 Play 番名（非阻塞）。"""
+        try:
+            if (
+                settings.bangumi_manage.rename_method
+                not in ("dandanplay", "subtitle_dandanplay")
+                or not settings.dandanplay.enable
+            ):
+                return
+            import asyncio
+            from module.database import Database
+            from module.searcher.dandanplay import batch_update_dandanplay_titles
+
+            async def _do_fetch():
+                await batch_update_dandanplay_titles(
+                    records=bangumi_list,
+                    app_id=settings.dandanplay.app_id,
+                    app_secret=settings.dandanplay.app_secret,
+                )
+
+            asyncio.create_task(_do_fetch())
+        except Exception as e:
+            logger.debug("[RSS] Dandanplay title fetch skipped: %s", e)
 
     async def link_to_data(self, rss: RSSItem) -> Bangumi | ResponseModel:
         torrents = await self.get_rss_torrents(rss.url, False)
