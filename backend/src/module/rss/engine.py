@@ -148,6 +148,7 @@ class RSSEngine(Database):
         matched: Bangumi = self.bangumi.match_torrent(torrent.name)
         if matched:
             if matched.filter == "":
+                torrent.bangumi_id = matched.id
                 if collector:
                     collector.record_match_result(torrent.name, matched, True, None)
                 return matched

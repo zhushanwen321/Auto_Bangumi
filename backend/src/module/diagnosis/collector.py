@@ -165,7 +165,7 @@ class DiagnosisCollector:
                     filter_passed=rec.filter_passed,
                     filter_reason=rec.filter_reason,
                     downloaded=rec.downloaded,
-                    issues=_torrent_issues(rec, unique_issues),
+                    issues=_torrent_issues(rec),
                 )
                 for rec in recs
             ]
@@ -191,9 +191,9 @@ class DiagnosisCollector:
 
 
 def _torrent_issues(
-    rec: _TorrentRecord, group_issues: list[DiagnosisIssue]
+    rec: _TorrentRecord,
 ) -> list[DiagnosisIssue]:
-    """从分组级 issues 中筛选出与单个种子相关的 issues。"""
+    """根据种子记录生成该种子的诊断 issues。"""
     result: list[DiagnosisIssue] = []
 
     # 种子自身的解析失败
@@ -239,7 +239,7 @@ def _build_fix_actions(
     actions: list[FixAction] = []
     issue_steps = {i.step for i in issues}
 
-    # 解析失败 → 建议手动设置标题
+    # 解析失败 → 为每个解析失败的种子生成修复建议
     if "parse" in issue_steps:
         for rec in recs:
             if rec.parse_result is None:
@@ -250,14 +250,13 @@ def _build_fix_actions(
                         params={"reason": "标题解析失败，可手动指定 title_raw 和 season"},
                     )
                 )
-                break
 
     # 未匹配 → 建议搜索添加番剧或手动关联
     if "match" in issue_steps:
         first_unmatched = next(
             (r for r in recs if r.parse_result and r.match_result is None), None
         )
-        if first_unmatched:
+        if first_unmatched and first_unmatched.parse_result:
             parsed = first_unmatched.parse_result
             actions.append(
                 FixAction(
@@ -286,6 +285,31 @@ def _build_fix_actions(
                         "current_filter": first_filtered.match_result.filter,
                         "filter_reason": first_filtered.filter_reason,
                         "reason": "种子被该番剧的过滤规则排除，可调整过滤条件",
+                    },
+                )
+            )
+
+    # 已匹配但未下载 → 建议强制下载
+    if "download" in issue_steps:
+        first_dl_fail = next(
+            (
+                r
+                for r in recs
+                if r.parse_result
+                and r.match_result
+                and r._download_recorded
+                and not r.downloaded
+            ),
+            None,
+        )
+        if first_dl_fail and first_dl_fail.match_result:
+            actions.append(
+                FixAction(
+                    action="force_download",
+                    torrent_name=first_dl_fail.torrent_name,
+                    params={
+                        "bangumi_id": first_dl_fail.match_result.id,
+                        "reason": "种子已匹配但未下载，可尝试强制下载",
                     },
                 )
             )
