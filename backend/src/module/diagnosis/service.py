@@ -135,7 +135,7 @@ class DiagnosisService(RSSEngine):
         if action.action == "force_download":
             return await self._fix_force_download(action)
         elif action.action == "link_bangumi":
-            return self._fix_link_bangumi(action)
+            return await self._fix_link_bangumi(action)
         elif action.action == "fix_parse":
             return self._fix_parse(action)
         elif action.action == "edit_filter":
@@ -167,7 +167,7 @@ class DiagnosisService(RSSEngine):
             logger.error("[Diagnosis] Force download failed: %s", e)
             return False
 
-    def _fix_link_bangumi(self, action: FixAction) -> bool:
+    async def _fix_link_bangumi(self, action: FixAction) -> bool:
         params = action.params
 
         # 模式一：从诊断建议自动创建 bangumi（suggested_title）
@@ -190,6 +190,29 @@ class DiagnosisService(RSSEngine):
             )
             self.bangumi.add_all([bangumi])
             self.commit()
+
+            # 尝试通过 TMDB 获取封面
+            try:
+                from module.parser.analyser.tmdb_parser import tmdb_parser
+                from module.conf import settings
+
+                tmdb_info = await tmdb_parser(
+                    suggested_title, settings.rss_parser.language, test=True
+                )
+                if tmdb_info and tmdb_info.poster_link:
+                    existing = self.bangumi.match_torrent(suggested_title)
+                    if existing:
+                        existing.poster_link = tmdb_info.poster_link
+                        self.add(existing)
+                        self.commit()
+                        logger.info(
+                            "[Diagnosis] Updated poster for %s: %s",
+                            suggested_title,
+                            tmdb_info.poster_link,
+                        )
+            except Exception as e:
+                logger.warning("[Diagnosis] Failed to fetch poster: %s", e)
+
             logger.info("[Diagnosis] Created bangumi: %s", suggested_title)
             return True
 
