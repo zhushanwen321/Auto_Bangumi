@@ -54,7 +54,7 @@ class AIMatcher:
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
         )
-        content = response.choices[0].message.content
+        content = response.choices[0].message.content or "{}"
         return json.loads(content)
 
     async def _generate_keywords(self, title: str) -> list[str]:
