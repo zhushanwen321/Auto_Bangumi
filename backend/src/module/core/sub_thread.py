@@ -202,3 +202,73 @@ class CalendarRefreshThread(ProgramStatus):
                 pass
             self._calendar_task = None
             logger.info("[CalendarRefreshThread] Stopped calendar refresh")
+
+
+# Dandanplay title refresh interval in seconds (24 hours)
+DANDANPLAY_REFRESH_INTERVAL = 24 * 60 * 60
+
+
+class DandanplayThread(ProgramStatus):
+    """Background thread for fetching missing dandanplay titles."""
+
+    def __init__(self):
+        super().__init__()
+        self._dandanplay_task: asyncio.Task | None = None
+        self._dandanplay_stop_event = asyncio.Event()
+
+    async def dandanplay_loop(self):
+        # Initial delay to let the system stabilize
+        await asyncio.sleep(120)
+
+        while not self._dandanplay_stop_event.is_set():
+            try:
+                if (
+                    settings.bangumi_manage.rename_method == "dandanplay"
+                    and settings.dandanplay.enable
+                ):
+                    from module.database import Database
+
+                    with Database() as db:
+                        records = db.bangumi.get_bangumi_missing_dandanplay()
+                        if records:
+                            from module.searcher.dandanplay import (
+                                batch_update_dandanplay_titles,
+                            )
+
+                            await batch_update_dandanplay_titles(
+                                records=records,
+                                db=db.bangumi,
+                                app_id=settings.dandanplay.app_id,
+                                app_secret=settings.dandanplay.app_secret,
+                            )
+                            logger.info(
+                                f"[DandanplayThread] Updated {len(records)} bangumi titles"
+                            )
+                        else:
+                            logger.debug("[DandanplayThread] No missing titles to update")
+            except Exception as e:
+                logger.error(f"[DandanplayThread] Error during dandanplay update: {e}")
+
+            try:
+                await asyncio.wait_for(
+                    self._dandanplay_stop_event.wait(),
+                    timeout=DANDANPLAY_REFRESH_INTERVAL,
+                )
+            except asyncio.TimeoutError:
+                pass
+
+    def dandanplay_start(self):
+        self._dandanplay_stop_event.clear()
+        self._dandanplay_task = asyncio.create_task(self.dandanplay_loop())
+        logger.info("[DandanplayThread] Started dandanplay title refresh (every 24h)")
+
+    async def dandanplay_stop(self):
+        if self._dandanplay_task and not self._dandanplay_task.done():
+            self._dandanplay_stop_event.set()
+            self._dandanplay_task.cancel()
+            try:
+                await self._dandanplay_task
+            except asyncio.CancelledError:
+                pass
+            self._dandanplay_task = None
+            logger.info("[DandanplayThread] Stopped dandanplay title refresh")

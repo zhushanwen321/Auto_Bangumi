@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from typing import NamedTuple, Optional
 
 from module.conf import settings
 from module.database import Database
@@ -17,6 +18,12 @@ _pending_renames: dict[tuple[str, str, str], float] = {}
 _PENDING_RENAME_COOLDOWN = 300  # 5 minutes cooldown before retrying same rename
 _CLEANUP_INTERVAL = 60  # Clean up pending cache at most once per minute
 _last_cleanup_time: float = 0
+
+
+class RenameInfo(NamedTuple):
+    episode_offset: int
+    season_offset: int
+    dandanplay_title: Optional[str]
 
 
 class Renamer(DownloadClient):
@@ -90,6 +97,10 @@ class Renamer(DownloadClient):
         elif method == "subtitle_pn":
             return f"{file_info.title} S{season}E{episode}.{file_info.language}{file_info.suffix}"
         elif method == "subtitle_advance":
+            return f"{bangumi_name} S{season}E{episode}.{file_info.language}{file_info.suffix}"
+        elif method == "dandanplay":
+            return f"{bangumi_name} S{season}E{episode}{file_info.suffix}"
+        elif method == "subtitle_dandanplay":
             return f"{bangumi_name} S{season}E{episode}.{file_info.language}{file_info.suffix}"
         else:
             logger.error(f"[Renamer] Unknown rename method: {method}")
@@ -271,12 +282,12 @@ class Renamer(DownloadClient):
 
     def _batch_lookup_offsets(
         self, torrents_info: list[dict]
-    ) -> dict[str, tuple[int, int]]:
+    ) -> dict[str, RenameInfo]:
         """Batch lookup offsets for all torrents in a single database session.
 
-        Returns a dict mapping torrent_hash to (episode_offset, season_offset).
+        Returns a dict mapping torrent_hash to RenameInfo.
         """
-        result: dict[str, tuple[int, int]] = {}
+        result: dict[str, RenameInfo] = {}
         if not torrents_info:
             return result
 
@@ -319,22 +330,28 @@ class Renamer(DownloadClient):
                     bangumi_id = hash_to_bangumi_id.get(torrent_hash)
                     if bangumi_id and bangumi_id in bangumi_map:
                         b = bangumi_map[bangumi_id]
-                        result[torrent_hash] = (b.episode_offset, b.season_offset)
+                        result[torrent_hash] = RenameInfo(
+                            b.episode_offset, b.season_offset,
+                            getattr(b, "dandanplay_title", None),
+                        )
                         continue
 
                     # 2. Try by tag
                     bangumi_id = tag_bangumi_ids.get(torrent_hash)
                     if bangumi_id and bangumi_id in bangumi_map:
                         b = bangumi_map[bangumi_id]
-                        result[torrent_hash] = (b.episode_offset, b.season_offset)
+                        result[torrent_hash] = RenameInfo(
+                            b.episode_offset, b.season_offset,
+                            getattr(b, "dandanplay_title", None),
+                        )
                         continue
 
                     # 3. Try by torrent name (individual query, but less common path)
                     bangumi = db.bangumi.match_torrent(torrent_name)
                     if bangumi:
-                        result[torrent_hash] = (
-                            bangumi.episode_offset,
-                            bangumi.season_offset,
+                        result[torrent_hash] = RenameInfo(
+                            bangumi.episode_offset, bangumi.season_offset,
+                            getattr(bangumi, "dandanplay_title", None),
                         )
                         continue
 
@@ -344,21 +361,21 @@ class Renamer(DownloadClient):
                     if not bangumi:
                         bangumi = db.bangumi.match_by_save_path(normalized_save_path)
                     if bangumi:
-                        result[torrent_hash] = (
-                            bangumi.episode_offset,
-                            bangumi.season_offset,
+                        result[torrent_hash] = RenameInfo(
+                            bangumi.episode_offset, bangumi.season_offset,
+                            getattr(bangumi, "dandanplay_title", None),
                         )
                         continue
 
                     # Default: no offset
-                    result[torrent_hash] = (0, 0)
+                    result[torrent_hash] = RenameInfo(0, 0, None)
 
         except Exception as e:
             logger.debug("[Renamer] Batch offset lookup failed: %s", e)
             # Fall back to individual lookups on error
             for info in torrents_info:
                 if info["hash"] not in result:
-                    result[info["hash"]] = (0, 0)
+                    result[info["hash"]] = RenameInfo(0, 0, None)
 
         return result
 
@@ -458,7 +475,12 @@ class Renamer(DownloadClient):
             media_list, subtitle_list = self.check_files(files)
             bangumi_name, season = self._path_to_bangumi(save_path, torrent_name)
             # Use pre-fetched offsets
-            episode_offset, season_offset = offset_map.get(torrent_hash, (0, 0))
+            rename_info = offset_map.get(torrent_hash, RenameInfo(0, 0, None))
+            episode_offset = rename_info.episode_offset
+            season_offset = rename_info.season_offset
+            # When using dandanplay rename method, replace bangumi_name with dandanplay_title
+            if rename_method in ("dandanplay", "subtitle_dandanplay") and rename_info.dandanplay_title:
+                bangumi_name = rename_info.dandanplay_title
             kwargs = {
                 "torrent_name": torrent_name,
                 "bangumi_name": bangumi_name,
