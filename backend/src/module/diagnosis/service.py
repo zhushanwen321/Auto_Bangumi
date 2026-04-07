@@ -169,6 +169,31 @@ class DiagnosisService(RSSEngine):
 
     def _fix_link_bangumi(self, action: FixAction) -> bool:
         params = action.params
+
+        # 模式一：从诊断建议自动创建 bangumi（suggested_title）
+        suggested_title = params.get("suggested_title")
+        if suggested_title:
+            season = params.get("season", 1)
+            existing = self.bangumi.match_torrent(suggested_title)
+            if existing:
+                logger.info(
+                    "[Diagnosis] Bangumi already exists: %s (id=%s)",
+                    existing.official_title,
+                    existing.id,
+                )
+                return True
+            bangumi = Bangumi(
+                official_title=suggested_title,
+                title_raw=suggested_title,
+                season=season,
+                filter="",
+            )
+            self.bangumi.add_all([bangumi])
+            self.commit()
+            logger.info("[Diagnosis] Created bangumi: %s", suggested_title)
+            return True
+
+        # 模式二：前端搜索后手动关联（torrent_id + bangumi_id）
         torrent_id = params.get("torrent_id")
         bangumi_id = params.get("bangumi_id")
 
