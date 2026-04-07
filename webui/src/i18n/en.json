@@ -22,6 +22,12 @@
       "title": "LLM Settings",
       "warning": "Experimental: LLM-based anime title parsing may produce inaccurate results."
     },
+    "dandanplay_set": {
+      "title": "Dandanplay Settings",
+      "enable": "Enable Dandanplay Title Alignment",
+      "app_id": "App ID",
+      "app_secret": "App Secret"
+    },
     "manage_set": {
       "delete_bad_torrent": "Delete Bad Torrent",
       "enable": "Enable",

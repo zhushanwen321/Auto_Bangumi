@@ -22,6 +22,12 @@
       "title": "LLM 设置",
       "warning": "实验功能：基于 LLM 的番剧标题解析可能产生不准确的结果。"
     },
+    "dandanplay_set": {
+      "title": "弹弹 Play 设置",
+      "enable": "启用弹弹 Play 番名对齐",
+      "app_id": "App ID",
+      "app_secret": "App Secret"
+    },
     "manage_set": {
       "delete_bad_torrent": "删除坏种",
       "enable": "启用",
