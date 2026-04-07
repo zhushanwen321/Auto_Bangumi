@@ -219,6 +219,14 @@ class ExperimentalOpenAI(BaseModel):
         return value
 
 
+class DandanplayConfig(BaseModel):
+    """Dandanplay API configuration for danmaku title alignment."""
+
+    enable: bool = Field(False, description="Enable Dandanplay integration")
+    app_id: str = Field("", description="Dandanplay AppId")
+    app_secret: str = Field("", description="Dandanplay AppSecret")
+
+
 class Security(BaseModel):
     """Access control configuration for the login endpoint and MCP server.
 
@@ -256,6 +264,7 @@ class Config(BaseModel):
     proxy: Proxy = Proxy()
     notification: Notification = Notification()
     experimental_openai: ExperimentalOpenAI = ExperimentalOpenAI()
+    dandanplay: DandanplayConfig = DandanplayConfig()
     security: Security = Security()
 
     def model_dump(self, *args, by_alias=True, **kwargs):

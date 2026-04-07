@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 TABLE_MODELS: list[type[SQLModel]] = [Bangumi, RSSItem, Torrent, User, Passkey]
 
 # Increment this when adding new migrations to MIGRATIONS list.
-CURRENT_SCHEMA_VERSION = 9
+CURRENT_SCHEMA_VERSION = 10
 
 # Each migration is a tuple of (version, description, list of SQL statements).
 # Migrations are applied in order. A migration at index i brings the schema
@@ -108,6 +108,14 @@ MIGRATIONS = [
         "add weekday_locked column to bangumi",
         [
             "ALTER TABLE bangumi ADD COLUMN weekday_locked BOOLEAN DEFAULT 0",
+        ],
+    ),
+    (
+        10,
+        "add dandanplay_title and retry count to bangumi",
+        [
+            "ALTER TABLE bangumi ADD COLUMN dandanplay_title TEXT DEFAULT NULL",
+            "ALTER TABLE bangumi ADD COLUMN dandanplay_retry_count INTEGER DEFAULT 0",
         ],
     ),
 ]
@@ -208,6 +216,10 @@ class Database(Session):
             if "bangumi" in tables and version == 9:
                 columns = [col["name"] for col in inspector.get_columns("bangumi")]
                 if "weekday_locked" in columns:
+                    needs_run = False
+            if "bangumi" in tables and version == 10:
+                columns = [col["name"] for col in inspector.get_columns("bangumi")]
+                if "dandanplay_title" in columns:
                     needs_run = False
             if needs_run:
                 try:

@@ -50,6 +50,11 @@ DEFAULT_SETTINGS = {
         "model": "gpt-3.5-turbo",
         "deployment_id": "",
     },
+    "dandanplay": {
+        "enable": False,
+        "app_id": "",
+        "app_secret": "",
+    },
     "security": {
         "login_whitelist": [],
         "login_tokens": [],
