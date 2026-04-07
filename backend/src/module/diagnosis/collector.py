@@ -10,6 +10,7 @@ from .models import (
     AnimeDiagnosis,
     DiagnosisIssue,
     DiagnosisReport,
+    FixAction,
     TorrentDiagnosis,
 )
 
@@ -164,16 +165,13 @@ class DiagnosisCollector:
                     filter_passed=rec.filter_passed,
                     filter_reason=rec.filter_reason,
                     downloaded=rec.downloaded,
-                    issues=[
-                        i
-                        for i in unique_issues
-                        if i.step == "download"
-                        and rec._download_recorded
-                        and not rec.downloaded
-                    ],
+                    issues=_torrent_issues(rec, unique_issues),
                 )
                 for rec in recs
             ]
+
+            # 根据 issues 生成修复建议
+            fix_actions = _build_fix_actions(title, recs, unique_issues)
 
             anime_list.append(
                 AnimeDiagnosis(
@@ -181,7 +179,7 @@ class DiagnosisCollector:
                     bangumi_id=bangumi_id,
                     status=status,
                     torrents=torrents,
-                    fix_actions=[],
+                    fix_actions=fix_actions,
                 )
             )
 
@@ -190,3 +188,106 @@ class DiagnosisCollector:
             rss_url=rss_url,
             anime_list=anime_list,
         )
+
+
+def _torrent_issues(
+    rec: _TorrentRecord, group_issues: list[DiagnosisIssue]
+) -> list[DiagnosisIssue]:
+    """从分组级 issues 中筛选出与单个种子相关的 issues。"""
+    result: list[DiagnosisIssue] = []
+
+    # 种子自身的解析失败
+    if rec.parse_result is None:
+        result.append(DiagnosisIssue("parse", "error", "无法解析种子标题"))
+
+    # 种子未匹配
+    if rec.parse_result is not None and rec.match_result is None:
+        result.append(DiagnosisIssue("match", "warning", "未匹配到任何番剧规则"))
+
+    # 种子被过滤
+    if rec.filter_passed is False:
+        result.append(
+            DiagnosisIssue(
+                "filter", "warning", f"被过滤规则排除: {rec.filter_reason}"
+            )
+        )
+
+    # bangumi 创建失败
+    if rec.bangumi_create_error is not None:
+        result.append(
+            DiagnosisIssue("bangumi_create", "warning", rec.bangumi_create_error)
+        )
+
+    # 已匹配但未下载
+    if (
+        rec.parse_result is not None
+        and rec.match_result is not None
+        and rec._download_recorded
+        and not rec.downloaded
+    ):
+        result.append(DiagnosisIssue("download", "error", "已匹配但未下载"))
+
+    return result
+
+
+def _build_fix_actions(
+    title: str,
+    recs: list[_TorrentRecord],
+    issues: list[DiagnosisIssue],
+) -> list[FixAction]:
+    """根据诊断问题生成修复建议。"""
+    actions: list[FixAction] = []
+    issue_steps = {i.step for i in issues}
+
+    # 解析失败 → 建议手动设置标题
+    if "parse" in issue_steps:
+        for rec in recs:
+            if rec.parse_result is None:
+                actions.append(
+                    FixAction(
+                        action="fix_parse",
+                        torrent_name=rec.torrent_name,
+                        params={"reason": "标题解析失败，可手动指定 title_raw 和 season"},
+                    )
+                )
+                break
+
+    # 未匹配 → 建议搜索添加番剧或手动关联
+    if "match" in issue_steps:
+        first_unmatched = next(
+            (r for r in recs if r.parse_result and r.match_result is None), None
+        )
+        if first_unmatched:
+            parsed = first_unmatched.parse_result
+            actions.append(
+                FixAction(
+                    action="link_bangumi",
+                    torrent_name=first_unmatched.torrent_name,
+                    params={
+                        "suggested_title": parsed.official_title or parsed.title_raw,
+                        "season": parsed.season,
+                        "reason": "数据库中无匹配的番剧规则，可通过搜索添加或手动关联",
+                    },
+                )
+            )
+
+    # 被过滤 → 建议修改过滤规则
+    if "filter" in issue_steps:
+        first_filtered = next(
+            (r for r in recs if r.filter_passed is False), None
+        )
+        if first_filtered and first_filtered.match_result:
+            actions.append(
+                FixAction(
+                    action="edit_filter",
+                    torrent_name=first_filtered.torrent_name,
+                    params={
+                        "bangumi_id": first_filtered.match_result.id,
+                        "current_filter": first_filtered.match_result.filter,
+                        "filter_reason": first_filtered.filter_reason,
+                        "reason": "种子被该番剧的过滤规则排除，可调整过滤条件",
+                    },
+                )
+            )
+
+    return actions
