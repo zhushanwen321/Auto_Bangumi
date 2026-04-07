@@ -90,62 +90,28 @@ class DiagnosisCollector:
 
         # anime_titles 过滤
         if anime_titles is not None:
+            title_set = set(anime_titles)
             groups = {
-                k: v for k, v in groups.items() if k in anime_titles
+                k: v for k, v in groups.items() if k in title_set
             }
 
         anime_list: list[AnimeDiagnosis] = []
         for title, recs in groups.items():
-            issues: list[DiagnosisIssue] = []
             bangumi_id: Optional[int] = None
-
             for rec in recs:
-                # 取第一个有效的 match_result id
                 if rec.match_result and rec.match_result.id:
                     bangumi_id = rec.match_result.id
                     break
 
-            for rec in recs:
-                if rec.parse_result is None:
-                    issues.append(
-                        DiagnosisIssue("parse", "error", "无法解析种子标题")
-                    )
-                if rec.bangumi_create_error is not None:
-                    issues.append(
-                        DiagnosisIssue(
-                            "bangumi_create", "warning", rec.bangumi_create_error
-                        )
-                    )
-                if rec.parse_result is not None and rec.match_result is None:
-                    issues.append(
-                        DiagnosisIssue("match", "warning", "未匹配到任何番剧规则")
-                    )
-                if rec.filter_passed is False:
-                    issues.append(
-                        DiagnosisIssue(
-                            "filter",
-                            "warning",
-                            f"被过滤规则排除: {rec.filter_reason}",
-                        )
-                    )
-                if (
-                    rec.parse_result is not None
-                    and rec.match_result is not None
-                    and rec._download_recorded
-                    and not rec.downloaded
-                ):
-                    issues.append(
-                        DiagnosisIssue("download", "error", "已匹配但未下载")
-                    )
-
-            # 去重（同一步骤同级别的 issue 不重复）
-            seen = set()
+            # 汇总所有种子的 issues 并去重
+            seen: set[tuple[str, str, str]] = set()
             unique_issues: list[DiagnosisIssue] = []
-            for issue in issues:
-                key = (issue.step, issue.severity, issue.message)
-                if key not in seen:
-                    seen.add(key)
-                    unique_issues.append(issue)
+            for rec in recs:
+                for issue in _torrent_issues(rec):
+                    key = (issue.step, issue.severity, issue.message)
+                    if key not in seen:
+                        seen.add(key)
+                        unique_issues.append(issue)
 
             # 判定状态
             has_error = any(i.severity == "error" for i in unique_issues)

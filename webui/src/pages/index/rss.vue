@@ -229,7 +229,5 @@ const rssRowKey = (row: RSS) => row.id;
   gap: 4px;
   flex-wrap: wrap;
   margin-top: 4px;
-  align-items: center;
 }
-
 </style>

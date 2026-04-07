@@ -117,15 +117,14 @@ class DiagnosisService(RSSEngine):
             # 第一步：解析
             parsed = TitleParser.raw_parser(t.name, collector=collector)
             # 第二步：匹配 + 过滤
-            self.match_torrent(t, collector=collector)
+            matched = self.match_torrent(t, collector=collector)
             # 第三步：检查下载状态（诊断场景只检查数据库记录）
             if t.name in downloaded_map:
                 collector.record_download(t.name, downloaded_map[t.name])
             # 第四步（聚合 RSS）：检查 bangumi 创建状态
             if rss.aggregate and parsed and parsed.title_raw:
-                existing = self.bangumi.match_torrent(t.name)
                 collector.record_bangumi_create(
-                    t.name, existing if existing else None
+                    t.name, matched if matched else None
                 )
 
         return collector.build_report(rss_id, rss.url, anime_titles)
@@ -174,22 +173,8 @@ class DiagnosisService(RSSEngine):
         suggested_title = params.get("suggested_title")
         if suggested_title:
             season = params.get("season", 1)
-            existing = self.bangumi.match_torrent(suggested_title)
-            if existing:
-                logger.info(
-                    "[Diagnosis] Bangumi already exists: %s (id=%s)",
-                    existing.official_title,
-                    existing.id,
-                )
-                return True
-            bangumi = Bangumi(
-                official_title=suggested_title,
-                title_raw=suggested_title,
-                season=season,
-                filter="",
-            )
-            self.bangumi.add_all([bangumi])
-            self.commit()
+            bangumi = self._create_bangumi(suggested_title, season)
+            logger.info("[Diagnosis] Bangumi ready: %s (id=%s)", bangumi.official_title, bangumi.id)
 
             # 尝试通过 TMDB 获取封面
             try:
@@ -200,20 +185,17 @@ class DiagnosisService(RSSEngine):
                     suggested_title, settings.rss_parser.language, test=True
                 )
                 if tmdb_info and tmdb_info.poster_link:
-                    existing = self.bangumi.match_torrent(suggested_title)
-                    if existing:
-                        existing.poster_link = tmdb_info.poster_link
-                        self.add(existing)
-                        self.commit()
-                        logger.info(
-                            "[Diagnosis] Updated poster for %s: %s",
-                            suggested_title,
-                            tmdb_info.poster_link,
-                        )
+                    bangumi.poster_link = tmdb_info.poster_link
+                    self.add(bangumi)
+                    self.commit()
+                    logger.info(
+                        "[Diagnosis] Updated poster for %s: %s",
+                        suggested_title,
+                        tmdb_info.poster_link,
+                    )
             except Exception as e:
                 logger.warning("[Diagnosis] Failed to fetch poster: %s", e)
 
-            logger.info("[Diagnosis] Created bangumi: %s", suggested_title)
             return True
 
         # 模式二：前端搜索后手动关联（torrent_id + bangumi_id）
@@ -235,28 +217,33 @@ class DiagnosisService(RSSEngine):
         self.commit()
         return True
 
+    def _create_bangumi(self, title: str, season: int, commit: bool = True) -> Bangumi:
+        """检查并创建 bangumi 记录，已存在则返回现有记录。"""
+        existing = self.bangumi.match_torrent(title)
+        if existing:
+            return existing
+        bangumi = Bangumi(
+            official_title=title,
+            title_raw=title,
+            season=season,
+            filter="",
+        )
+        self.bangumi.add_all([bangumi])
+        if commit:
+            self.commit()
+        return bangumi
+
     def _fix_parse(self, action: FixAction) -> bool:
         params = action.params
         title_raw = params.get("title_raw", action.torrent_name)
         season = params.get("season", 1)
 
-        # 先检查是否已有匹配的 bangumi 记录
-        existing = self.bangumi.match_torrent(title_raw)
-        if existing:
-            # 更新已有记录
-            if "season" in params:
-                existing.season = season
-            if "official_title" in params:
-                existing.official_title = params["official_title"]
-            self.add(existing)
-        else:
-            bangumi = Bangumi(
-                official_title=title_raw,
-                title_raw=title_raw,
-                season=season,
-                filter="",
-            )
-            self.bangumi.add_all([bangumi])
+        bangumi = self._create_bangumi(title_raw, season, commit=False)
+        if bangumi.season != season:
+            bangumi.season = season
+        if "official_title" in params:
+            bangumi.official_title = params["official_title"]
+        self.add(bangumi)
         self.commit()
         return True
 
