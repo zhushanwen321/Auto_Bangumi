@@ -48,7 +48,7 @@ class RSSAnalyser(TitleParser):
 
                 async def tmdb_search_fn(keyword: str) -> list[dict]:
                     from module.parser.analyser.tmdb_parser import tmdb_parser
-                    result = tmdb_parser(keyword, settings.rss_parser.language)
+                    result = await tmdb_parser(keyword, settings.rss_parser.language)
                     if result is None:
                         return []
                     return [
