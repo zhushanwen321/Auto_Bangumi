@@ -691,3 +691,27 @@ class BangumiDatabase:
             _id,
         )
         return True
+
+    def update_dandanplay_title(self, bangumi_id: int, title: Optional[str]):
+        """Update dandanplay_title for a bangumi."""
+        bangumi = self.search_id(bangumi_id)
+        if bangumi:
+            bangumi.dandanplay_title = title
+            if title is None:
+                bangumi.dandanplay_retry_count += 1
+            else:
+                bangumi.dandanplay_retry_count = 0
+            self.session.commit()
+            _invalidate_bangumi_cache()
+
+    def get_bangumi_missing_dandanplay(self) -> list[Bangumi]:
+        """Get bangumi records missing dandanplay_title (retry count < 3)."""
+        condition = select(Bangumi).where(
+            and_(
+                Bangumi.dandanplay_title.is_(None),
+                Bangumi.dandanplay_retry_count < 3,
+                Bangumi.deleted == false(),
+            )
+        )
+        result = self.session.execute(condition)
+        return list(result.scalars().all())
