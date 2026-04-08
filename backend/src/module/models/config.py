@@ -192,6 +192,16 @@ class Notification(BaseModel):
         return self
 
 
+class LLMFeatures(BaseModel):
+    enable_title_enhancement: bool = Field(
+        False, description="Enable AI title enhancement"
+    )
+    enable_rss_match: bool = Field(False, description="Enable AI RSS bangumi match")
+    enable_dandanplay_match: bool = Field(
+        False, description="Enable AI dandanplay match"
+    )
+
+
 class ExperimentalOpenAI(BaseModel):
     enable: bool = Field(False, description="Enable experimental OpenAI")
     api_key: str = Field("", description="OpenAI api key")
@@ -209,6 +219,9 @@ class ExperimentalOpenAI(BaseModel):
     )
     deployment_id: str = Field(
         "", description="Azure OpenAI deployment id, ignored when api type is openai"
+    )
+    features: LLMFeatures = Field(
+        default_factory=LLMFeatures, description="LLM feature switches"
     )
 
     @field_validator("api_base")

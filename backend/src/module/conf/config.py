@@ -79,6 +79,17 @@ class Settings(Config):
         if "security" not in config:
             config["security"] = DEFAULT_SETTINGS["security"]
 
+        # Migrate experimental_openai.features for existing users:
+        # if OpenAI was enabled but features key is absent, enable all features
+        # so they don't lose functionality after upgrade.
+        openai = config.get("experimental_openai", {})
+        if openai.get("enable") and "features" not in openai:
+            openai["features"] = {
+                "enable_title_enhancement": True,
+                "enable_rss_match": True,
+                "enable_dandanplay_match": True,
+            }
+
         return config
 
     def save(self, config_dict: dict | None = None):
