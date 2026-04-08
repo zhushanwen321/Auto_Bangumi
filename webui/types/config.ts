@@ -17,12 +17,17 @@ export type NotificationType = [
   'wecom',
   'gotify',
   'pushover',
-  'webhook',
+  'webhook'
 ];
-/** OpenAI Model List */
-export type OpenAIModel = ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo'];
 /** OpenAI API Type */
 export type OpenAIType = ['openai', 'azure'];
+
+/** LLM feature switches */
+export interface LLMFeatures {
+  enable_title_enhancement: boolean;
+  enable_rss_match: boolean;
+  enable_dandanplay_match: boolean;
+}
 
 export interface Program {
   rss_time: number;
@@ -90,11 +95,12 @@ export interface ExperimentalOpenAI {
   enable: boolean;
   api_key: string;
   api_base: string;
-  model: TupleToUnion<OpenAIModel>;
+  model: string;
   // azure
   api_type: TupleToUnion<OpenAIType>;
   api_version?: string;
   deployment_id?: string;
+  features: LLMFeatures;
 }
 
 /** Access control for the login endpoint and MCP server.
@@ -177,6 +183,11 @@ export const initConfig: Config = {
     api_type: 'openai',
     api_version: '2020-05-03',
     deployment_id: '',
+    features: {
+      enable_title_enhancement: false,
+      enable_rss_match: false,
+      enable_dandanplay_match: false,
+    },
   },
   dandanplay: {
     enable: false,
