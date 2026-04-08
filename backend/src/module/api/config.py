@@ -3,6 +3,8 @@ import logging
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+from typing_extensions import Literal
 
 from module.conf import settings
 from module.models import APIResponse, Config
@@ -139,4 +141,59 @@ async def update_config(config: Config):
         return JSONResponse(
             status_code=406,
             content={"msg_en": "Update config failed.", "msg_zh": "更新配置失败。"},
+        )
+
+
+class TestOpenAIRequest(BaseModel):
+    api_key: str = Field(..., description="OpenAI API key")
+    api_base: str = Field("https://api.openai.com/v1", description="API base URL")
+    api_type: Literal["azure", "openai"] = Field("openai", description="API type")
+    api_version: str = Field("2023-05-15", description="API version (Azure)")
+    model: str = Field("gpt-3.5-turbo", description="Model name")
+    deployment_id: str = Field("", description="Azure deployment ID")
+
+
+class TestOpenAIResponse(BaseModel):
+    success: bool
+    message_en: str
+    message_zh: str
+
+
+def _do_test_completion(req: TestOpenAIRequest) -> tuple[bool, str]:
+    """同步执行一次最小 chat completion 来验证连接。"""
+    from module.network.openai_client import create_openai_client
+
+    client = create_openai_client(req.model_dump())
+    model = req.deployment_id if req.api_type == "azure" and req.deployment_id else req.model
+    response = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=1,
+    )
+    return True, response.model or model
+
+
+@router.post(
+    "/test-openai",
+    response_model=TestOpenAIResponse,
+    dependencies=[Depends(get_current_user)],
+)
+async def test_openai(req: TestOpenAIRequest):
+    """Test LLM connection with the provided configuration (no side effects)."""
+    try:
+        success, info = await asyncio.to_thread(_do_test_completion, req)
+        return TestOpenAIResponse(
+            success=True,
+            message_en=f"Connection successful, model: {info}",
+            message_zh=f"连接成功，模型: {info}",
+        )
+    except Exception as e:
+        err = str(e)
+        # 截断过长的错误信息（如 HTML 响应），只保留前 200 字符
+        if len(err) > 200:
+            err = err[:200] + "..."
+        return TestOpenAIResponse(
+            success=False,
+            message_en=f"Connection failed: {err}",
+            message_zh=f"连接失败: {err}",
         )

@@ -27,7 +27,9 @@
       "enable_dandanplay_match": "Dandanplay Match",
       "dandanplay_title": "Dandanplay Credentials",
       "app_id": "App ID",
-      "app_secret": "App Secret"
+      "app_secret": "App Secret",
+      "test": "Test Connection",
+      "testing": "Testing..."
     },
     "dandanplay_set": {
       "title": "Dandanplay Settings",

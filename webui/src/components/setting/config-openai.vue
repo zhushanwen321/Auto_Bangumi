@@ -10,6 +10,26 @@ const openAI = getSettingGroup('experimental_openai');
 const dandanplay = getSettingGroup('dandanplay');
 const openAITypes: OpenAIType = ['openai', 'azure'];
 
+const isTesting = ref(false);
+const testMessage = ref('');
+const testSuccess = ref(false);
+
+async function testConnection() {
+  isTesting.value = true;
+  testMessage.value = '';
+  try {
+    const result = await apiConfig.testOpenAI(openAI.value);
+    testSuccess.value = result.success;
+    testMessage.value = result.message_zh;
+  } catch {
+    testSuccess.value = false;
+    testMessage.value =
+      t('config.experimental_openai_set.test_failed') || '连接失败';
+  } finally {
+    isTesting.value = false;
+  }
+}
+
 const providerItems: SettingItem<ExperimentalOpenAI>[] = [
   {
     configKey: 'api_type',
@@ -109,6 +129,29 @@ const featureItems = [
             v-model:data="openAI[i.configKey]"
           />
 
+          <div class="test-section">
+            <ab-button
+              size="small"
+              type="secondary"
+              :disabled="isTesting || !openAI.api_key"
+              @click="testConnection"
+            >
+              <div v-if="isTesting" i-carbon-circle-dash animate-spin />
+              <span>{{
+                isTesting
+                  ? $t('config.experimental_openai_set.testing')
+                  : $t('config.experimental_openai_set.test')
+              }}</span>
+            </ab-button>
+            <p
+              v-if="testMessage"
+              class="test-result"
+              :class="testSuccess ? 'test-success' : 'test-error'"
+            >
+              {{ testMessage }}
+            </p>
+          </div>
+
           <template v-if="openAI.api_type === 'azure'">
             <ab-setting
               v-for="i in azureItems"
@@ -197,6 +240,33 @@ const featureItems = [
   text-transform: uppercase;
   letter-spacing: 0.5px;
   font-weight: 600;
+}
+
+.test-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.test-result {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin: 0;
+}
+
+.test-success {
+  color: var(--color-success, #22c55e);
+  background: color-mix(
+    in srgb,
+    var(--color-success, #22c55e) 10%,
+    transparent
+  );
+}
+
+.test-error {
+  color: var(--color-danger, #ef4444);
+  background: color-mix(in srgb, var(--color-danger, #ef4444) 10%, transparent);
 }
 
 .slide-fade-enter-active {

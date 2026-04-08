@@ -1,33 +1,22 @@
-import pytest
-from unittest.mock import MagicMock, patch
-from module.searcher.ai_matcher import AIMatcher, MatchResult
-
-
-def _make_mock_response(content: str) -> MagicMock:
-    """Create a mock OpenAI response with the given JSON content string."""
-    mock_resp = MagicMock()
-    mock_resp.choices = [MagicMock()]
-    mock_resp.choices[0].message.content = content
-    return mock_resp
+from unittest.mock import patch
+from module.searcher.ai_matcher import AIMatcher
 
 
 class TestAIMatcherGenerateKeywords:
     async def test_generate_keywords_returns_list(self):
-        mock_client = MagicMock()
-        mock_client.chat.completions.create.return_value = _make_mock_response(
-            '{"keywords": ["葬送的芙莉莲", "Frieren", "Sousou no Frieren"]}'
-        )
-        with patch("module.searcher.ai_matcher.OpenAI", return_value=mock_client):
+        with patch(
+            "module.searcher.ai_matcher.call_json",
+            return_value={"keywords": ["葬送的芙莉莲", "Frieren", "Sousou no Frieren"]},
+        ):
             matcher = AIMatcher(openai_config={"api_key": "test"})
             keywords = await matcher._generate_keywords("葬送的芙莉莲 S01E01")
         assert keywords == ["葬送的芙莉莲", "Frieren", "Sousou no Frieren"]
 
     async def test_generate_keywords_empty_result(self):
-        mock_client = MagicMock()
-        mock_client.chat.completions.create.return_value = _make_mock_response(
-            '{"keywords": []}'
-        )
-        with patch("module.searcher.ai_matcher.OpenAI", return_value=mock_client):
+        with patch(
+            "module.searcher.ai_matcher.call_json",
+            return_value={"keywords": []},
+        ):
             matcher = AIMatcher(openai_config={"api_key": "test"})
             keywords = await matcher._generate_keywords("test")
         assert keywords == []
@@ -48,24 +37,22 @@ class TestAIMatcherDeduplicate:
 
 class TestAIMatcherSearchAndMatch:
     async def test_search_and_match_success(self):
-        mock_client = MagicMock()
-        mock_client.chat.completions.create.side_effect = [
-            _make_mock_response('{"keywords": ["keyword1"]}'),
-            _make_mock_response('{"index": 0, "confidence": 0.9}'),
-        ]
-
-        async def mock_search(keyword):
-            return [{"id": 1, "name": "Test Anime"}]
-
-        def mock_formatter(results):
-            return "1. Test Anime"
-
-        with patch("module.searcher.ai_matcher.OpenAI", return_value=mock_client):
+        with patch(
+            "module.searcher.ai_matcher.call_json",
+            side_effect=[
+                {"keywords": ["keyword1"]},
+                {"index": 0, "confidence": 0.9},
+            ],
+        ):
             matcher = AIMatcher(openai_config={"api_key": "test"})
+
+            async def mock_search(keyword):
+                return [{"id": 1, "name": "Test Anime"}]
+
             result = await matcher.search_and_match(
                 title="Test",
                 search_fn=mock_search,
-                result_formatter=mock_formatter,
+                result_formatter=lambda r: "1. Test Anime",
             )
 
         assert result is not None
@@ -73,16 +60,15 @@ class TestAIMatcherSearchAndMatch:
         assert result.matched_item["name"] == "Test Anime"
 
     async def test_search_and_match_no_results(self):
-        mock_client = MagicMock()
-        mock_client.chat.completions.create.return_value = _make_mock_response(
-            '{"keywords": ["keyword1"]}'
-        )
-
-        async def mock_search(keyword):
-            return []
-
-        with patch("module.searcher.ai_matcher.OpenAI", return_value=mock_client):
+        with patch(
+            "module.searcher.ai_matcher.call_json",
+            return_value={"keywords": ["keyword1"]},
+        ):
             matcher = AIMatcher(openai_config={"api_key": "test"})
+
+            async def mock_search(keyword):
+                return []
+
             result = await matcher.search_and_match(
                 title="Test",
                 search_fn=mock_search,
@@ -92,17 +78,18 @@ class TestAIMatcherSearchAndMatch:
         assert result is None
 
     async def test_search_and_match_low_confidence(self):
-        mock_client = MagicMock()
-        mock_client.chat.completions.create.side_effect = [
-            _make_mock_response('{"keywords": ["keyword1"]}'),
-            _make_mock_response('{"index": 0, "confidence": 0.3}'),
-        ]
-
-        async def mock_search(keyword):
-            return [{"id": 1, "name": "Test"}]
-
-        with patch("module.searcher.ai_matcher.OpenAI", return_value=mock_client):
+        with patch(
+            "module.searcher.ai_matcher.call_json",
+            side_effect=[
+                {"keywords": ["keyword1"]},
+                {"index": 0, "confidence": 0.3},
+            ],
+        ):
             matcher = AIMatcher(openai_config={"api_key": "test"})
+
+            async def mock_search(keyword):
+                return [{"id": 1, "name": "Test"}]
+
             result = await matcher.search_and_match(
                 title="Test",
                 search_fn=mock_search,

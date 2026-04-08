@@ -1,14 +1,13 @@
 import asyncio
-import json
 import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
-from openai import AzureOpenAI, OpenAI
+from module.network.openai_client import call_json, create_openai_client
 
 logger = logging.getLogger(__name__)
 
-KEYWORD_PROMPT = """你是一个动漫标题搜索助手。给定一个动漫标题（可能包含字幕组标签、集数、分辨率等信息），生成3-5个用于在TMDB或弹弹Play数据库中搜索该动漫的关键词。
+KEYWORD_SYSTEM = """你是一个动漫标题搜索助手。给定一个动漫标题（可能包含字幕组标签、集数、分辨率等信息），生成3-5个用于在TMDB或弹弹Play数据库中搜索该动漫的关键词。
 
 考虑以下变体：
 - 中文翻译名（简体/繁体）
@@ -17,19 +16,12 @@ KEYWORD_PROMPT = """你是一个动漫标题搜索助手。给定一个动漫标
 - 罗马音
 - 常见缩写
 
-标题: {title}
+必须返回合法的JSON格式，例如: {"keywords": ["关键词1", "关键词2", "关键词3"]}"""
 
-返回JSON格式的关键词列表，例如: {{"keywords": ["关键词1", "关键词2", "关键词3"]}}"""
+MATCH_SYSTEM = """你是一个动漫匹配助手。给定原始标题和搜索到的候选番剧列表，判断哪个候选是最佳匹配。
 
-MATCH_PROMPT = """你是一个动漫匹配助手。给定原始标题和搜索到的候选番剧列表，判断哪个候选是最佳匹配。
-
-原始标题: {title}
-
-候选列表:
-{candidates}
-
-返回JSON格式: {{"index": <最佳匹配的序号(0开始)>, "confidence": <置信度0-1>}}
-如果没有任何候选匹配，返回: {{"index": -1, "confidence": 0}}"""
+必须返回合法的JSON格式: {"index": <最佳匹配的序号(0开始)>, "confidence": <置信度0-1>}
+如果没有任何候选匹配，返回: {"index": -1, "confidence": 0}"""
 
 
 @dataclass
@@ -40,41 +32,25 @@ class MatchResult:
 
 class AIMatcher:
     def __init__(self, openai_config: dict):
-        api_type = openai_config.get("api_type", "openai")
-        if api_type == "azure":
-            self._client = AzureOpenAI(
-                api_key=openai_config.get("api_key", ""),
-                base_url=openai_config.get("api_base", "https://api.openai.com/v1"),
-                azure_deployment=openai_config.get("deployment_id", ""),
-                api_version=openai_config.get("api_version", "2023-05-15"),
-            )
-        else:
-            self._client = OpenAI(
-                api_key=openai_config.get("api_key", ""),
-                base_url=openai_config.get("api_base", "https://api.openai.com/v1"),
-            )
+        self._client = create_openai_client(openai_config)
         self._model = openai_config.get("model", "gpt-3.5-turbo")
         self._confidence_threshold = 0.7
 
-    def _call_llm(self, prompt: str) -> dict:
-        """同步调用 LLM，返回解析后的 dict。"""
-        response = self._client.chat.completions.create(
-            model=self._model,
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-        )
-        content = response.choices[0].message.content or "{}"
-        try:
-            return json.loads(content)
-        except json.JSONDecodeError as e:
-            logger.warning("[AIMatcher] LLM returned invalid JSON: %s", e)
-            return {}
+    def _call_llm(self, system: str, user: str) -> dict:
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
+        return call_json(self._client, self._model, messages)
 
     async def _generate_keywords(self, title: str) -> list[str]:
+        logger.info("[LLM] 关键词生成 | 输入: %s", title)
         result = await asyncio.to_thread(
-            self._call_llm, KEYWORD_PROMPT.format(title=title)
+            self._call_llm, KEYWORD_SYSTEM, title
         )
-        return result.get("keywords", [])
+        keywords = result.get("keywords", [])
+        logger.info("[LLM] 关键词生成 | 结果: %s", keywords)
+        return keywords
 
     def _deduplicate(
         self, results: list[dict], key_fn: Callable
@@ -95,17 +71,23 @@ class AIMatcher:
             return None
 
         formatted = formatter(candidates)
+        user_content = f"原始标题: {title}\n\n候选列表:\n{formatted}"
+        logger.info("[LLM] 番剧匹配 | 输入: %s, 候选数: %d", title, len(candidates))
         result = await asyncio.to_thread(
-            self._call_llm,
-            MATCH_PROMPT.format(title=title, candidates=formatted),
+            self._call_llm, MATCH_SYSTEM, user_content,
         )
 
         index = result.get("index", -1)
         confidence = result.get("confidence", 0)
 
         if index < 0 or confidence < self._confidence_threshold:
+            logger.info("[LLM] 番剧匹配 | 无匹配 (confidence=%.2f)", confidence)
             return None
 
+        logger.info(
+            "[LLM] 番剧匹配 | 匹配: index=%d, confidence=%.2f",
+            index, confidence,
+        )
         return MatchResult(matched_item=candidates[index], confidence=confidence)
 
     async def search_and_match(

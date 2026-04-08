@@ -27,7 +27,9 @@
       "enable_dandanplay_match": "弹弹 Play 匹配",
       "dandanplay_title": "弹弹 Play 凭据",
       "app_id": "App ID",
-      "app_secret": "App Secret"
+      "app_secret": "App Secret",
+      "test": "测试连接",
+      "testing": "测试中..."
     },
     "dandanplay_set": {
       "title": "弹弹 Play 设置",
