@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
 
 from module.conf import settings
 from module.models import Bangumi
@@ -10,6 +13,9 @@ from module.parser.analyser import (
     tmdb_parser,
     torrent_parser,
 )
+
+if TYPE_CHECKING:
+    from module.diagnosis.collector import DiagnosisCollector
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +63,7 @@ class TitleParser:
             logger.warning("Please change bangumi info manually.")
 
     @staticmethod
-    def raw_parser(raw: str) -> Bangumi | None:
+    def raw_parser(raw: str, collector: DiagnosisCollector | None = None) -> Bangumi | None:
         language = settings.rss_parser.language
         try:
             # use OpenAI ChatGPT to parse raw title and get structured data
@@ -69,6 +75,8 @@ class TitleParser:
             else:
                 episode = raw_parser(raw)
                 if episode is None:
+                    if collector:
+                        collector.record_parse(raw, None)
                     return None
 
             titles = {
@@ -89,10 +97,12 @@ class TitleParser:
                 official_title = title_raw
             if not title_raw:
                 logger.warning("Cannot extract title_raw from '%s', skipping", raw)
+                if collector:
+                    collector.record_parse(raw, None)
                 return None
             _season = episode.season
             logger.debug("RAW:%s >> %s", raw, title_raw)
-            return Bangumi(
+            result = Bangumi(
                 official_title=official_title,
                 title_raw=title_raw,
                 season=_season,
@@ -105,8 +115,13 @@ class TitleParser:
                 offset=0,
                 filter=",".join(settings.rss_parser.filter),
             )
+            if collector:
+                collector.record_parse(raw, result)
+            return result
         except (ValueError, AttributeError, TypeError) as e:
             logger.warning(f"Cannot parse '{raw}': {type(e).__name__}: {e}")
+            if collector:
+                collector.record_parse(raw, None)
             return None
 
     @staticmethod

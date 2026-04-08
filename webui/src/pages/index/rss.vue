@@ -12,6 +12,22 @@ const { rss, selectedRSS } = storeToRefs(useRSSStore());
 const { getAll, deleteSelected, disableSelected, enableSelected } =
   useRSSStore();
 
+// Diagnosis modal state
+const diagnosisTarget = ref<{ id: number; name: string } | null>(null);
+const diagnosisVisible = ref(false);
+
+function openDiagnosis(rss: RSS) {
+  diagnosisTarget.value = { id: rss.id, name: rss.name };
+  diagnosisVisible.value = true;
+}
+
+// 当 Modal 通过 v-model 关闭时，同步清理 diagnosisTarget
+watch(diagnosisVisible, (val) => {
+  if (!val && diagnosisTarget.value) {
+    diagnosisTarget.value = null;
+  }
+});
+
 onActivated(() => {
   getAll();
 });
@@ -65,6 +81,9 @@ const rssColumns = computed<DataTableColumns<RSS>>(() => [
           ) : (
             <ab-tag type="inactive" title="inactive" />
           )}
+          <ab-button size="small" onClick={() => openDiagnosis(rss)}>
+            {t('rss.diagnosis.button')}
+          </ab-button>
         </div>
       );
     },
@@ -111,6 +130,12 @@ const rssRowKey = (row: RSS) => row.id;
                 :type="item.enabled ? 'active' : 'inactive'"
                 :title="item.enabled ? 'active' : 'inactive'"
               />
+              <ab-button
+                size="small"
+                @click="openDiagnosis(item as RSS)"
+              >
+                {{ t('rss.diagnosis.button') }}
+              </ab-button>
             </div>
           </div>
         </template>
@@ -141,6 +166,13 @@ const rssRowKey = (row: RSS) => row.id;
         </div>
       </div>
     </ab-container>
+
+    <ab-rss-diagnosis
+      v-if="diagnosisTarget"
+      v-model="diagnosisVisible"
+      :rss-id="diagnosisTarget.id"
+      :rss-name="diagnosisTarget.name"
+    />
   </div>
 </template>
 

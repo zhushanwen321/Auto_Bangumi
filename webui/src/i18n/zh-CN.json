@@ -154,6 +154,9 @@
       "step3_desc": "AutoBangumi 将自动下载并重命名新剧集。",
       "add_rss_btn": "添加 RSS 订阅"
     },
+    "others": {
+      "title": "未匹配种子"
+    },
     "rule": {
       "apply": "应用",
       "delete": "删除",
@@ -181,6 +184,25 @@
       "season": "季度",
       "year": "年份",
       "yes_btn": "是"
+    },
+    "torrents": {
+      "title": "种子列表",
+      "delete": "删除",
+      "deleteAll": "清空所有",
+      "downloaded": "已下载",
+      "empty": "暂无种子",
+      "confirm_clear": "确定要清空所有种子吗？此操作不可撤销。",
+      "select_all": "全选",
+      "deselect_all": "取消全选",
+      "delete_selected": "删除 ({count})",
+      "deleted_one": "已删除种子 {id}",
+      "deleted_count": "已删除 {count} 条种子",
+      "cleared_all": "已清空所有种子",
+      "load_failed": "加载种子列表失败",
+      "delete_failed": "删除失败",
+      "source": {
+        "manual": "手动/订阅"
+      }
     }
   },
   "log": {
@@ -257,7 +279,44 @@
     "selectbox": "选择",
     "status": "状态",
     "title": "RSS 条目",
-    "url": "链接"
+    "url": "链接",
+    "diagnosis": {
+      "title": "RSS 诊断",
+      "button": "诊断",
+      "step_preview": "选择番剧",
+      "step_scanning": "扫描中",
+      "step_report": "诊断结果",
+      "select_all": "全选",
+      "deselect_all": "取消全选",
+      "start_scan": "开始诊断",
+      "scanning": "正在扫描 RSS...",
+      "torrent_count": "{count} 个种子",
+      "status_matched": "已匹配",
+      "status_unmatched": "未匹配",
+      "status_unparsed": "未解析",
+      "parse_ok": "解析成功",
+      "parse_fail": "解析失败",
+      "match_ok": "已匹配",
+      "match_fail": "未匹配",
+      "filter_pass": "过滤通过",
+      "filter_block": "被过滤",
+      "download_ok": "已下载",
+      "download_fail": "未下载",
+      "no_issues": "无问题",
+      "fix_button": "修复",
+      "fix_force_download": "强制下载",
+      "fix_link_bangumi": "关联番剧",
+      "fix_parse": "修复解析",
+      "fix_filter": "编辑过滤",
+      "fix_success": "修复成功",
+      "fix_failed": "修复失败",
+      "close": "关闭",
+      "back": "返回",
+      "no_data": "无法获取数据",
+      "no_torrents": "该 RSS 源没有找到种子",
+      "rss_not_found": "RSS 不存在",
+      "anime_titles_label": "选择要诊断的番剧"
+    }
   },
   "calendar": {
     "title": "放送表",

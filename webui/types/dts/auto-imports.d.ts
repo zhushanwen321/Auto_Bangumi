@@ -9,6 +9,7 @@ declare global {
   const apiBangumi: typeof import('../../src/api/bangumi')['apiBangumi']
   const apiCheck: typeof import('../../src/api/check')['apiCheck']
   const apiConfig: typeof import('../../src/api/config')['apiConfig']
+  const apiDiagnosis: typeof import('../../src/api/diagnosis')['apiDiagnosis']
   const apiDownload: typeof import('../../src/api/download')['apiDownload']
   const apiDownloader: typeof import('../../src/api/downloader')['apiDownloader']
   const apiLog: typeof import('../../src/api/log')['apiLog']
