@@ -41,11 +41,11 @@ class RSSAnalyser(TitleParser):
             pass
 
         # AI enhanced search: trigger when title was not enhanced
-        if settings.experimental_openai.enable and not title_enhanced:
+        if settings.experimental_openai.enable and settings.experimental_openai.features.enable_title_enhancement and not title_enhanced:
             from module.searcher.ai_matcher import AIMatcher
 
             try:
-                kwargs = settings.experimental_openai.dict(exclude={"enable"})
+                kwargs = settings.experimental_openai.dict(exclude={"enable", "features"})
                 matcher = AIMatcher(openai_config=kwargs)
 
                 async def tmdb_search_fn(keyword: str) -> list[dict]:
