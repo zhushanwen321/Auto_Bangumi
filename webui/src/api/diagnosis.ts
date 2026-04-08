@@ -1,7 +1,4 @@
-import type {
-  DiagnosisReport,
-  PreviewItem,
-} from '#/diagnosis';
+import type { DiagnosisReport, PreviewItem } from '#/diagnosis';
 
 export const apiDiagnosis = {
   async getPreview(rssId: number): Promise<PreviewItem[]> {
@@ -11,10 +8,7 @@ export const apiDiagnosis = {
     return data.data;
   },
 
-  async scan(
-    rssId: number,
-    animeTitles?: string[],
-  ): Promise<DiagnosisReport> {
+  async scan(rssId: number, animeTitles?: string[]): Promise<DiagnosisReport> {
     const { data } = await axios.post<{ data: DiagnosisReport }>(
       `/api/v1/rss/${rssId}/diagnosis/scan`,
       {
@@ -27,7 +21,7 @@ export const apiDiagnosis = {
   async fix(
     action: string,
     torrentName: string,
-    params: Record<string, any>,
+    params: Record<string, any>
   ): Promise<boolean> {
     const { data } = await axios.post<{ data: { success: boolean } }>(
       '/api/v1/diagnosis/fix',

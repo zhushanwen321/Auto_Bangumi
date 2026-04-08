@@ -130,10 +130,7 @@ const rssRowKey = (row: RSS) => row.id;
                 :type="item.enabled ? 'active' : 'inactive'"
                 :title="item.enabled ? 'active' : 'inactive'"
               />
-              <ab-button
-                size="small"
-                @click="openDiagnosis(item as RSS)"
-              >
+              <ab-button size="small" @click="openDiagnosis(item as RSS)">
                 {{ t('rss.diagnosis.button') }}
               </ab-button>
             </div>

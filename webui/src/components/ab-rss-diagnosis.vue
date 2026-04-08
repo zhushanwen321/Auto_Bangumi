@@ -1,10 +1,7 @@
 <script lang="ts" setup>
 import { Close } from '@icon-park/vue-next';
 import { NSpin } from 'naive-ui';
-import type {
-  DiagnosisReport,
-  PreviewItem,
-} from '#/diagnosis';
+import type { DiagnosisReport, PreviewItem } from '#/diagnosis';
 import { apiDiagnosis } from '@/api/diagnosis';
 
 const props = defineProps<{
@@ -57,12 +54,16 @@ function toggleTitle(title: string) {
 }
 
 // show 为 true 时加载数据（immediate 处理组件挂载时已是 true 的情况）
-watch(show, async (val) => {
-  if (val) {
-    resetState();
-    await loadPreview();
-  }
-}, { immediate: true });
+watch(
+  show,
+  async (val) => {
+    if (val) {
+      resetState();
+      await loadPreview();
+    }
+  },
+  { immediate: true }
+);
 
 function resetState() {
   step.value = 'preview';
@@ -92,10 +93,7 @@ async function startScan() {
   step.value = 'scanning';
   scanLoading.value = true;
   try {
-    report.value = await apiDiagnosis.scan(
-      props.rssId,
-      selectedTitles.value,
-    );
+    report.value = await apiDiagnosis.scan(props.rssId, selectedTitles.value);
     step.value = 'report';
   } catch {
     message.error(t('rss.diagnosis.fix_failed'));
@@ -105,7 +103,11 @@ async function startScan() {
   }
 }
 
-async function executeFix(action: string, torrentName: string, params: Record<string, any>) {
+async function executeFix(
+  action: string,
+  torrentName: string,
+  params: Record<string, any>
+) {
   fixingTorrent.value = torrentName;
   try {
     const success = await apiDiagnosis.fix(action, torrentName, params);
@@ -121,7 +123,9 @@ async function executeFix(action: string, torrentName: string, params: Record<st
   }
 }
 
-function statusTagType(status: string): 'active' | 'warn' | 'inactive' | 'primary' {
+function statusTagType(
+  status: string
+): 'active' | 'warn' | 'inactive' | 'primary' {
   switch (status) {
     case 'matched':
     case 'ok':
@@ -140,10 +144,14 @@ function statusTagType(status: string): 'active' | 'warn' | 'inactive' | 'primar
 
 function animeStatusText(status: string): string {
   switch (status) {
-    case 'ok': return t('rss.diagnosis.no_issues');
-    case 'warning': return 'Warning';
-    case 'error': return 'Error';
-    default: return status;
+    case 'ok':
+      return t('rss.diagnosis.no_issues');
+    case 'warning':
+      return 'Warning';
+    case 'error':
+      return 'Error';
+    default:
+      return status;
   }
 }
 
@@ -168,7 +176,11 @@ function close() {
             <h2 class="diag-title">
               {{ t('rss.diagnosis.title') }} - {{ rssName }}
             </h2>
-            <button class="close-btn" :aria-label="t('rss.diagnosis.close')" @click="close">
+            <button
+              class="close-btn"
+              :aria-label="t('rss.diagnosis.close')"
+              @click="close"
+            >
               <Close theme="outline" size="18" />
             </button>
           </header>
@@ -178,7 +190,10 @@ function close() {
             <div class="diag-content">
               <NSpin :show="previewLoading">
                 <!-- Empty state -->
-                <div v-if="!previewLoading && previewList.length === 0" class="diag-empty">
+                <div
+                  v-if="!previewLoading && previewList.length === 0"
+                  class="diag-empty"
+                >
                   {{ t('rss.diagnosis.no_torrents') }}
                 </div>
 
@@ -191,7 +206,12 @@ function close() {
                       @change="toggleSelectAll"
                     />
                     <span class="diag-select-all-text">
-                      {{ allSelected ? t('rss.diagnosis.deselect_all') : t('rss.diagnosis.select_all') }} ({{ selectedTitles.length }}/{{ previewList.length }})
+                      {{
+                        allSelected
+                          ? t('rss.diagnosis.deselect_all')
+                          : t('rss.diagnosis.select_all')
+                      }}
+                      ({{ selectedTitles.length }}/{{ previewList.length }})
                     </span>
                   </label>
                 </div>
@@ -210,8 +230,15 @@ function close() {
                     />
                     <span class="diag-anime-title">{{ item.title }}</span>
                     <span class="diag-anime-meta">
-                      <ab-tag :type="statusTagType(item.status)" :title="item.status" />
-                      <span class="diag-torrent-count">{{ t('rss.diagnosis.torrent_count', { count: item.torrent_count }) }}</span>
+                      <ab-tag
+                        :type="statusTagType(item.status)"
+                        :title="item.status"
+                      />
+                      <span class="diag-torrent-count">{{
+                        t('rss.diagnosis.torrent_count', {
+                          count: item.torrent_count,
+                        })
+                      }}</span>
                     </span>
                   </label>
                 </div>
@@ -233,7 +260,9 @@ function close() {
           <template v-else-if="step === 'scanning'">
             <div class="diag-content diag-content--center">
               <NSpin :show="scanLoading" />
-              <p class="diag-scanning-text">{{ t('rss.diagnosis.scanning') }}</p>
+              <p class="diag-scanning-text">
+                {{ t('rss.diagnosis.scanning') }}
+              </p>
             </div>
           </template>
 
@@ -242,7 +271,11 @@ function close() {
             <div class="diag-content">
               <!-- Global errors -->
               <div v-if="report.errors.length > 0" class="diag-errors">
-                <div v-for="(err, i) in report.errors" :key="i" class="diag-error-item">
+                <div
+                  v-for="(err, i) in report.errors"
+                  :key="i"
+                  class="diag-error-item"
+                >
                   {{ err }}
                 </div>
               </div>
@@ -255,8 +288,13 @@ function close() {
                   class="diag-anime-group"
                 >
                   <div class="diag-anime-group-header">
-                    <span class="diag-anime-group-title">{{ anime.anime_title }}</span>
-                    <ab-tag :type="statusTagType(anime.status)" :title="animeStatusText(anime.status)" />
+                    <span class="diag-anime-group-title">{{
+                      anime.anime_title
+                    }}</span>
+                    <ab-tag
+                      :type="statusTagType(anime.status)"
+                      :title="animeStatusText(anime.status)"
+                    />
                   </div>
 
                   <!-- Torrents -->
@@ -265,27 +303,48 @@ function close() {
                       v-for="torrent in anime.torrents"
                       :key="torrent.torrent_name"
                       class="diag-torrent-item"
-                      :class="{ 'diag-torrent-item--error': torrent.issues.length > 0 }"
+                      :class="{
+                        'diag-torrent-item--error': torrent.issues.length > 0,
+                      }"
                     >
-                      <div class="diag-torrent-name" :title="torrent.torrent_name">
+                      <div
+                        class="diag-torrent-name"
+                        :title="torrent.torrent_name"
+                      >
                         {{ torrent.torrent_name }}
                       </div>
                       <div class="diag-torrent-tags">
                         <ab-tag
                           :type="torrent.parse_result ? 'active' : 'warn'"
-                          :title="torrent.parse_result ? t('rss.diagnosis.parse_ok') : t('rss.diagnosis.parse_fail')"
+                          :title="
+                            torrent.parse_result
+                              ? t('rss.diagnosis.parse_ok')
+                              : t('rss.diagnosis.parse_fail')
+                          "
                         />
                         <ab-tag
                           :type="torrent.match_result ? 'active' : 'inactive'"
-                          :title="torrent.match_result ? t('rss.diagnosis.match_ok') : t('rss.diagnosis.match_fail')"
+                          :title="
+                            torrent.match_result
+                              ? t('rss.diagnosis.match_ok')
+                              : t('rss.diagnosis.match_fail')
+                          "
                         />
                         <ab-tag
                           :type="booleanTag(torrent.filter_passed)"
-                          :title="torrent.filter_passed ? t('rss.diagnosis.filter_pass') : t('rss.diagnosis.filter_block')"
+                          :title="
+                            torrent.filter_passed
+                              ? t('rss.diagnosis.filter_pass')
+                              : t('rss.diagnosis.filter_block')
+                          "
                         />
                         <ab-tag
                           :type="torrent.downloaded ? 'active' : 'inactive'"
-                          :title="torrent.downloaded ? t('rss.diagnosis.download_ok') : t('rss.diagnosis.download_fail')"
+                          :title="
+                            torrent.downloaded
+                              ? t('rss.diagnosis.download_ok')
+                              : t('rss.diagnosis.download_fail')
+                          "
                         />
                       </div>
 
@@ -296,25 +355,40 @@ function close() {
                           :key="idx"
                           class="diag-issue"
                         >
-                          <span class="diag-issue-step">[{{ issue.step }}]</span>
-                          <span class="diag-issue-msg">{{ issue.message }}</span>
+                          <span class="diag-issue-step"
+                            >[{{ issue.step }}]</span
+                          >
+                          <span class="diag-issue-msg">{{
+                            issue.message
+                          }}</span>
                         </div>
                       </div>
 
                       <!-- Filter reason -->
-                      <div v-if="torrent.filter_reason" class="diag-filter-reason">
-                        {{ t('rss.diagnosis.filter_block') }}: {{ torrent.filter_reason }}
+                      <div
+                        v-if="torrent.filter_reason"
+                        class="diag-filter-reason"
+                      >
+                        {{ t('rss.diagnosis.filter_block') }}:
+                        {{ torrent.filter_reason }}
                       </div>
 
                       <!-- Fix actions -->
-                      <div v-if="anime.fix_actions.length > 0" class="diag-fix-actions">
+                      <div
+                        v-if="anime.fix_actions.length > 0"
+                        class="diag-fix-actions"
+                      >
                         <ab-button
-                          v-for="(fix, fixIdx) in anime.fix_actions.filter(f => f.torrent_name === torrent.torrent_name)"
+                          v-for="(fix, fixIdx) in anime.fix_actions.filter(
+                            (f) => f.torrent_name === torrent.torrent_name
+                          )"
                           :key="fixIdx"
                           size="small"
                           type="secondary"
                           :loading="fixingTorrent === torrent.torrent_name"
-                          @click="executeFix(fix.action, fix.torrent_name, fix.params)"
+                          @click="
+                            executeFix(fix.action, fix.torrent_name, fix.params)
+                          "
                         >
                           {{ t('rss.diagnosis.fix_button') }}: {{ fix.action }}
                         </ab-button>
@@ -326,7 +400,11 @@ function close() {
             </div>
 
             <footer class="diag-footer diag-footer--report">
-              <ab-button size="small" type="secondary" @click="step = 'preview'">
+              <ab-button
+                size="small"
+                type="secondary"
+                @click="step = 'preview'"
+              >
                 {{ t('rss.diagnosis.back') }}
               </ab-button>
             </footer>
@@ -437,7 +515,7 @@ function close() {
   gap: 10px;
   cursor: pointer;
 
-  input[type="checkbox"] {
+  input[type='checkbox'] {
     accent-color: var(--color-primary);
     width: 16px;
     height: 16px;

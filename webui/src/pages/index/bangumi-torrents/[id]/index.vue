@@ -9,7 +9,9 @@ definePage({
 const route = useRoute();
 const bangumiId = Number((route.params as Record<string, string>).id);
 
-const title = computed(() => `${useI18n().t('homepage.torrents.title')} #${bangumiId}`);
+const title = computed(
+  () => `${useI18n().t('homepage.torrents.title')} #${bangumiId}`
+);
 </script>
 
 <template>

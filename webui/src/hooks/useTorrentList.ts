@@ -18,13 +18,15 @@ export function useTorrentList(loadFn: () => Promise<Torrent[]>) {
   }
 
   const allSelected = computed(
-    () => torrents.value.length > 0 && selectedIds.value.size === torrents.value.length,
+    () =>
+      torrents.value.length > 0 &&
+      selectedIds.value.size === torrents.value.length
   );
 
   function toggleAll() {
     selectedIds.value = allSelected.value
       ? new Set()
-      : new Set(torrents.value.map(t => t.id));
+      : new Set(torrents.value.map((t) => t.id));
   }
 
   function toggleOne(id: number) {
