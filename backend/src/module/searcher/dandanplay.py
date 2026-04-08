@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import json
 import logging
 import time
 from typing import Optional
@@ -53,7 +54,14 @@ class DandanplayClient:
                     )
                     return None
 
-                data = resp.json()
+                try:
+                    data = resp.json()
+                except json.JSONDecodeError:
+                    logger.warning(
+                        "[Dandanplay] Invalid JSON response for: %s", keyword
+                    )
+                    return None
+
                 animes = data.get("animes", [])
                 if animes:
                     return animes[0].get("animeTitle")

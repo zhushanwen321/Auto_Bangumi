@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
-from openai import OpenAI
+from openai import AzureOpenAI, OpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +40,19 @@ class MatchResult:
 
 class AIMatcher:
     def __init__(self, openai_config: dict):
-        self._client = OpenAI(
-            api_key=openai_config.get("api_key", ""),
-            base_url=openai_config.get("api_base", "https://api.openai.com/v1"),
-        )
+        api_type = openai_config.get("api_type", "openai")
+        if api_type == "azure":
+            self._client = AzureOpenAI(
+                api_key=openai_config.get("api_key", ""),
+                base_url=openai_config.get("api_base", "https://api.openai.com/v1"),
+                azure_deployment=openai_config.get("deployment_id", ""),
+                api_version=openai_config.get("api_version", "2023-05-15"),
+            )
+        else:
+            self._client = OpenAI(
+                api_key=openai_config.get("api_key", ""),
+                base_url=openai_config.get("api_base", "https://api.openai.com/v1"),
+            )
         self._model = openai_config.get("model", "gpt-3.5-turbo")
         self._confidence_threshold = 0.7
 
@@ -55,7 +64,11 @@ class AIMatcher:
             response_format={"type": "json_object"},
         )
         content = response.choices[0].message.content or "{}"
-        return json.loads(content)
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as e:
+            logger.warning("[AIMatcher] LLM returned invalid JSON: %s", e)
+            return {}
 
     async def _generate_keywords(self, title: str) -> list[str]:
         result = await asyncio.to_thread(

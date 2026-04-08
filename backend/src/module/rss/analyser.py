@@ -13,15 +13,17 @@ logger = logging.getLogger(__name__)
 
 class RSSAnalyser(TitleParser):
     async def official_title_parser(self, bangumi: Bangumi, rss: RSSItem, torrent: Torrent):
-        tmdb_matched = False
+        title_enhanced = False
 
         if rss.parser == "mikan":
             try:
                 bangumi.poster_link, bangumi.official_title = await self.mikan_parser(
                     torrent.homepage
                 )
-                tmdb_matched = True
-            except AttributeError:
+                # 验证返回值有效性，空标题不应视为匹配成功
+                if bangumi.official_title:
+                    title_enhanced = True
+            except (AttributeError, TypeError):
                 logger.warning("[Parser] Mikan torrent has no homepage info.")
                 pass
         elif rss.parser == "tmdb":
@@ -34,12 +36,12 @@ class RSSAnalyser(TitleParser):
             bangumi.poster_link = poster_link
             # TMDB search failed when year and poster_link are both None
             if year is not None or poster_link is not None:
-                tmdb_matched = True
+                title_enhanced = True
         else:
             pass
 
-        # AI enhanced search: trigger when TMDB/Mikan both failed
-        if settings.experimental_openai.enable and not tmdb_matched:
+        # AI enhanced search: trigger when title was not enhanced
+        if settings.experimental_openai.enable and not title_enhanced:
             from module.searcher.ai_matcher import AIMatcher
 
             try:
@@ -150,12 +152,16 @@ class RSSAnalyser(TitleParser):
             ):
                 return
             import asyncio
-            from module.database import Database
             from module.searcher.dandanplay import batch_update_dandanplay_titles
+
+            # 提取简单数据避免 ORM 对象 detach 问题
+            record_data = [
+                {"id": b.id, "official_title": b.official_title} for b in bangumi_list
+            ]
 
             async def _do_fetch():
                 await batch_update_dandanplay_titles(
-                    records=bangumi_list,
+                    records=record_data,
                     app_id=settings.dandanplay.app_id,
                     app_secret=settings.dandanplay.app_secret,
                 )

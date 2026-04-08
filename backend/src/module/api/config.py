@@ -107,7 +107,8 @@ async def update_config(config: Config):
             and new_method in ("dandanplay", "subtitle_dandanplay")
             and settings.dandanplay.enable
         ):
-            asyncio.create_task(_trigger_dandanplay_batch())
+            _dandanplay_task = asyncio.create_task(_trigger_dandanplay_batch())
+            # 保存引用避免 GC 回收导致任务静默丢失
 
         return JSONResponse(
             status_code=200,
