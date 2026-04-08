@@ -1,10 +1,16 @@
+from __future__ import annotations
+
 import logging
 import re
+from typing import TYPE_CHECKING
 
 from module.conf import settings
 from module.models import Bangumi, ResponseModel, RSSItem, Torrent
 from module.network import RequestContent
 from module.parser import TitleParser
+
+if TYPE_CHECKING:
+    from module.diagnosis.collector import DiagnosisCollector
 
 from .engine import RSSEngine
 
@@ -47,14 +53,20 @@ class RSSAnalyser(TitleParser):
         return rss_torrents
 
     async def torrents_to_data(
-        self, torrents: list[Torrent], rss: RSSItem, full_parse: bool = True
+        self,
+        torrents: list[Torrent],
+        rss: RSSItem,
+        full_parse: bool = True,
+        collector: DiagnosisCollector | None = None,
     ) -> list:
         new_data = []
         seen_titles: set[str] = set()
         for torrent in torrents:
-            bangumi = self.raw_parser(raw=torrent.name)
+            bangumi = self.raw_parser(raw=torrent.name, collector=collector)
             if bangumi and bangumi.title_raw not in seen_titles:
                 await self.official_title_parser(bangumi=bangumi, rss=rss, torrent=torrent)
+                if collector:
+                    collector.record_bangumi_create(torrent.name, bangumi)
                 if not full_parse:
                     return [bangumi]
                 seen_titles.add(bangumi.title_raw)

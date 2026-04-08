@@ -1,13 +1,18 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import re
 from datetime import datetime, timezone
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from module.database import Database, engine
 from module.downloader import DownloadClient
 from module.models import Bangumi, ResponseModel, RSSItem, Torrent
 from module.network import RequestContent
+
+if TYPE_CHECKING:
+    from module.diagnosis.collector import DiagnosisCollector
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +24,13 @@ class RSSEngine(Database):
         self._filter_cache: dict[str, re.Pattern] = {}
 
     @staticmethod
-    async def _get_torrents(rss: RSSItem) -> list[Torrent]:
+    async def _get_torrents(
+        rss: RSSItem, skip_filter: bool = False
+    ) -> list[Torrent]:
         async with RequestContent() as req:
-            torrents = await req.get_torrents(rss.url)
+            # 诊断场景不过滤种子，确保用户能看到所有内容
+            _filter = "" if skip_filter else None
+            torrents = await req.get_torrents(rss.url, _filter=_filter)
             # Add RSS ID
             for torrent in torrents:
                 torrent.rss_id = rss.id
@@ -131,18 +140,41 @@ class RSSEngine(Database):
                 )
         return self._filter_cache[filter_str]
 
-    def match_torrent(self, torrent: Torrent) -> Optional[Bangumi]:
+    def match_torrent(
+        self,
+        torrent: Torrent,
+        collector: DiagnosisCollector | None = None,
+    ) -> Optional[Bangumi]:
         matched: Bangumi = self.bangumi.match_torrent(torrent.name)
         if matched:
             if matched.filter == "":
+                torrent.bangumi_id = matched.id
+                if collector:
+                    collector.record_match_result(torrent.name, matched, True, None)
                 return matched
             pattern = self._get_filter_pattern(matched.filter)
             if not pattern.search(torrent.name):
                 torrent.bangumi_id = matched.id
+                if collector:
+                    collector.record_match_result(torrent.name, matched, True, None)
                 return matched
+            else:
+                # 匹配成功但被过滤规则排除
+                if collector:
+                    collector.record_match_result(
+                        torrent.name, matched, False, matched.filter
+                    )
+                return None
+        if collector:
+            collector.record_match_result(torrent.name, None, None, None)
         return None
 
-    async def refresh_rss(self, client: DownloadClient, rss_id: Optional[int] = None):
+    async def refresh_rss(
+        self,
+        client: DownloadClient,
+        rss_id: Optional[int] = None,
+        collector: DiagnosisCollector | None = None,
+    ):
         # Get All RSS Items
         if not rss_id:
             rss_items: list[RSSItem] = self.rss.search_active()
@@ -167,11 +199,16 @@ class RSSEngine(Database):
             rss_item.last_error = error
             self.add(rss_item)
             for torrent in new_torrents:
-                matched_data = self.match_torrent(torrent)
+                matched_data = self.match_torrent(torrent, collector=collector)
                 if matched_data:
-                    if await client.add_torrent(torrent, matched_data):
+                    dl_result = await client.add_torrent(torrent, matched_data)
+                    if dl_result:
                         logger.debug("[Engine] Add torrent %s to client", torrent.name)
                     torrent.downloaded = True
+                    if collector:
+                        collector.record_download(torrent.name, bool(dl_result))
+                elif collector:
+                    collector.record_download(torrent.name, False)
             # Add all torrents to database
             self.torrent.add_all(new_torrents)
         self.commit()
