@@ -14,7 +14,6 @@ interface Options<T = unknown> {
   onFinally?: () => void;
 }
 
- 
 type AnyAsyncFunction = (...args: any[]) => Promise<any>;
 
 function createUseApi<TApi extends AnyAsyncFunction>(
@@ -114,7 +113,10 @@ describe('useApi logic', () => {
     it('should call onFinally after error', async () => {
       const onFinally = vi.fn();
       const mockApi = vi.fn().mockRejectedValue(new Error('test error'));
-      const { execute } = createUseApi(mockApi, { onFinally, onError: vi.fn() });
+      const { execute } = createUseApi(mockApi, {
+        onFinally,
+        onError: vi.fn(),
+      });
 
       await execute();
 
@@ -125,7 +127,9 @@ describe('useApi logic', () => {
   describe('error handling', () => {
     it('should set isLoading to false after error', async () => {
       const mockApi = vi.fn().mockRejectedValue(new Error('API Error'));
-      const { execute, getIsLoading } = createUseApi(mockApi, { onError: vi.fn() });
+      const { execute, getIsLoading } = createUseApi(mockApi, {
+        onError: vi.fn(),
+      });
 
       await execute();
 
