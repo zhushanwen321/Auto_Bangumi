@@ -145,26 +145,44 @@ class RSSAnalyser(TitleParser):
     def _fetch_dandanplay_titles(bangumi_list: list[Bangumi]):
         """后台获取弹弹 Play 番名（非阻塞）。"""
         try:
-            if (
-                settings.bangumi_manage.rename_method
-                not in ("dandanplay", "subtitle_dandanplay")
-                or not settings.dandanplay.enable
+            if settings.bangumi_manage.rename_method not in (
+                "dandanplay",
+                "subtitle_dandanplay",
             ):
                 return
             import asyncio
-            from module.searcher.dandanplay import batch_update_dandanplay_titles
+            from module.searcher.dandanplay import (
+                batch_update_dandanplay_titles,
+                batch_update_dandanplay_titles_ai,
+            )
 
             # 提取简单数据避免 ORM 对象 detach 问题
             record_data = [
                 {"id": b.id, "official_title": b.official_title} for b in bangumi_list
             ]
 
+            use_ai = (
+                settings.experimental_openai.enable
+                and settings.experimental_openai.features.enable_dandanplay_match
+            )
+
             async def _do_fetch():
-                await batch_update_dandanplay_titles(
-                    records=record_data,
-                    app_id=settings.dandanplay.app_id,
-                    app_secret=settings.dandanplay.app_secret,
-                )
+                if use_ai:
+                    openai_config = settings.experimental_openai.dict(
+                        exclude={"enable", "features"}
+                    )
+                    await batch_update_dandanplay_titles_ai(
+                        records=record_data,
+                        app_id=settings.dandanplay.app_id,
+                        app_secret=settings.dandanplay.app_secret,
+                        openai_config=openai_config,
+                    )
+                else:
+                    await batch_update_dandanplay_titles(
+                        records=record_data,
+                        app_id=settings.dandanplay.app_id,
+                        app_secret=settings.dandanplay.app_secret,
+                    )
 
             asyncio.create_task(_do_fetch())
         except Exception as e:

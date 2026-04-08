@@ -62,7 +62,7 @@ class TitleParser:
         try:
             # use OpenAI ChatGPT to parse raw title and get structured data
             if settings.experimental_openai.enable:
-                kwargs = settings.experimental_openai.dict(exclude={"enable"})
+                kwargs = settings.experimental_openai.dict(exclude={"enable", "features"})
                 gpt = OpenAIParser(**kwargs)
                 episode_dict = gpt.parse(raw, asdict=True)
                 episode = Episode(**episode_dict)
