@@ -5,7 +5,7 @@ export type DownloaderType = ['qbittorrent'];
 /** rss parser 语言 */
 export type RssParserLang = ['zh', 'en', 'jp'];
 /** 重命名方式 */
-export type RenameMethod = ['normal', 'pn', 'advance', 'none'];
+export type RenameMethod = ['normal', 'pn', 'advance', 'none', 'dandanplay'];
 /** 代理类型 */
 export type ProxyType = ['http', 'https', 'socks5'];
 /** 通知类型 */
@@ -17,12 +17,17 @@ export type NotificationType = [
   'wecom',
   'gotify',
   'pushover',
-  'webhook',
+  'webhook'
 ];
-/** OpenAI Model List */
-export type OpenAIModel = ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo'];
 /** OpenAI API Type */
 export type OpenAIType = ['openai', 'azure'];
+
+/** LLM feature switches */
+export interface LLMFeatures {
+  enable_title_enhancement: boolean;
+  enable_rss_match: boolean;
+  enable_dandanplay_match: boolean;
+}
 
 export interface Program {
   rss_time: number;
@@ -90,17 +95,24 @@ export interface ExperimentalOpenAI {
   enable: boolean;
   api_key: string;
   api_base: string;
-  model: TupleToUnion<OpenAIModel>;
+  model: string;
   // azure
   api_type: TupleToUnion<OpenAIType>;
   api_version?: string;
   deployment_id?: string;
+  features: LLMFeatures;
 }
 
 /** Access control for the login endpoint and MCP server.
  *  Whitelist entries are IPv4/IPv6 CIDR strings (e.g. "192.168.0.0/16").
  *  An empty login_whitelist allows all IPs; an empty mcp_whitelist denies all IP-based MCP access.
  */
+export interface DandanplayConfig {
+  enable: boolean;
+  app_id: string;
+  app_secret: string;
+}
+
 export interface Security {
   login_whitelist: string[];
   login_tokens: string[];
@@ -117,6 +129,7 @@ export interface Config {
   proxy: Proxy;
   notification: Notification;
   experimental_openai: ExperimentalOpenAI;
+  dandanplay: DandanplayConfig;
   security: Security;
 }
 
@@ -170,6 +183,16 @@ export const initConfig: Config = {
     api_type: 'openai',
     api_version: '2020-05-03',
     deployment_id: '',
+    features: {
+      enable_title_enhancement: false,
+      enable_rss_match: false,
+      enable_dandanplay_match: false,
+    },
+  },
+  dandanplay: {
+    enable: false,
+    app_id: '',
+    app_secret: '',
   },
   security: {
     login_whitelist: [],

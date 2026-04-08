@@ -192,6 +192,16 @@ class Notification(BaseModel):
         return self
 
 
+class LLMFeatures(BaseModel):
+    enable_title_enhancement: bool = Field(
+        False, description="Enable AI title enhancement"
+    )
+    enable_rss_match: bool = Field(False, description="Enable AI RSS bangumi match")
+    enable_dandanplay_match: bool = Field(
+        False, description="Enable AI dandanplay match"
+    )
+
+
 class ExperimentalOpenAI(BaseModel):
     enable: bool = Field(False, description="Enable experimental OpenAI")
     api_key: str = Field("", description="OpenAI api key")
@@ -210,6 +220,9 @@ class ExperimentalOpenAI(BaseModel):
     deployment_id: str = Field(
         "", description="Azure OpenAI deployment id, ignored when api type is openai"
     )
+    features: LLMFeatures = Field(
+        default_factory=LLMFeatures, description="LLM feature switches"
+    )
 
     @field_validator("api_base")
     @classmethod
@@ -217,6 +230,14 @@ class ExperimentalOpenAI(BaseModel):
         if value == "https://api.openai.com/":
             return "https://api.openai.com/v1"
         return value
+
+
+class DandanplayConfig(BaseModel):
+    """Dandanplay API configuration for danmaku title alignment."""
+
+    enable: bool = Field(False, description="Enable Dandanplay integration")
+    app_id: str = Field("", description="Dandanplay AppId")
+    app_secret: str = Field("", description="Dandanplay AppSecret")
 
 
 class Security(BaseModel):
@@ -256,6 +277,7 @@ class Config(BaseModel):
     proxy: Proxy = Proxy()
     notification: Notification = Notification()
     experimental_openai: ExperimentalOpenAI = ExperimentalOpenAI()
+    dandanplay: DandanplayConfig = DandanplayConfig()
     security: Security = Security()
 
     def model_dump(self, *args, by_alias=True, **kwargs):

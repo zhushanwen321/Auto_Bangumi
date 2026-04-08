@@ -17,10 +17,25 @@
       "api_type": "Provider",
       "api_version": "API Version",
       "deployment_id": "Deployment ID",
-      "enable": "Enable LLM Parsing",
+      "enable": "Enable LLM",
       "model": "Model",
       "title": "LLM Settings",
-      "warning": "Experimental: LLM-based anime title parsing may produce inaccurate results."
+      "warning": "Experimental: LLM-based features may produce inaccurate results.",
+      "features_title": "Feature Switches",
+      "enable_title_enhancement": "Title Enhancement",
+      "enable_rss_match": "RSS Bangumi Match",
+      "enable_dandanplay_match": "Dandanplay Match",
+      "dandanplay_title": "Dandanplay Credentials",
+      "app_id": "App ID",
+      "app_secret": "App Secret",
+      "test": "Test Connection",
+      "testing": "Testing..."
+    },
+    "dandanplay_set": {
+      "title": "Dandanplay Settings",
+      "enable": "Enable Dandanplay Title Alignment",
+      "app_id": "App ID",
+      "app_secret": "App Secret"
     },
     "manage_set": {
       "delete_bad_torrent": "Delete Bad Torrent",

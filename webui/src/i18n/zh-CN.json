@@ -17,10 +17,25 @@
       "api_type": "服务商",
       "api_version": "API 版本",
       "deployment_id": "部署 ID",
-      "enable": "启用 LLM 解析",
+      "enable": "启用 LLM",
       "model": "模型",
       "title": "LLM 设置",
-      "warning": "实验功能：基于 LLM 的番剧标题解析可能产生不准确的结果。"
+      "warning": "实验功能：基于 LLM 的功能可能产生不准确的结果。",
+      "features_title": "功能开关",
+      "enable_title_enhancement": "标题解析增强",
+      "enable_rss_match": "RSS 番剧识别",
+      "enable_dandanplay_match": "弹弹 Play 匹配",
+      "dandanplay_title": "弹弹 Play 凭据",
+      "app_id": "App ID",
+      "app_secret": "App Secret",
+      "test": "测试连接",
+      "testing": "测试中..."
+    },
+    "dandanplay_set": {
+      "title": "弹弹 Play 设置",
+      "enable": "启用弹弹 Play 番名对齐",
+      "app_id": "App ID",
+      "app_secret": "App Secret"
     },
     "manage_set": {
       "delete_bad_torrent": "删除坏种",

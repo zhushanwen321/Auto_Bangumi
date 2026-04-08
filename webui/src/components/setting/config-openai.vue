@@ -1,14 +1,34 @@
 <script lang="ts" setup>
 import { Caution } from '@icon-park/vue-next';
 import type { SettingItem } from '#/components';
-import type { ExperimentalOpenAI, OpenAIModel, OpenAIType } from '#/config';
+import type { ExperimentalOpenAI, OpenAIType } from '#/config';
 
 const { t } = useMyI18n();
 const { getSettingGroup } = useConfigStore();
 
 const openAI = getSettingGroup('experimental_openai');
-const openAIModels: OpenAIModel = ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo'];
+const dandanplay = getSettingGroup('dandanplay');
 const openAITypes: OpenAIType = ['openai', 'azure'];
+
+const isTesting = ref(false);
+const testMessage = ref('');
+const testSuccess = ref(false);
+
+async function testConnection() {
+  isTesting.value = true;
+  testMessage.value = '';
+  try {
+    const result = await apiConfig.testOpenAI(openAI.value);
+    testSuccess.value = result.success;
+    testMessage.value = result.message_zh;
+  } catch {
+    testSuccess.value = false;
+    testMessage.value =
+      t('config.experimental_openai_set.test_failed') || '连接失败';
+  } finally {
+    isTesting.value = false;
+  }
+}
 
 const providerItems: SettingItem<ExperimentalOpenAI>[] = [
   {
@@ -37,15 +57,13 @@ const providerItems: SettingItem<ExperimentalOpenAI>[] = [
       placeholder: 'https://api.openai.com/v1',
     },
   },
-];
-
-const openAIItems: SettingItem<ExperimentalOpenAI>[] = [
   {
     configKey: 'model',
     label: () => t('config.experimental_openai_set.model'),
-    type: 'select',
+    type: 'input',
     prop: {
-      items: openAIModels,
+      type: 'text',
+      placeholder: 'gpt-4o-mini',
     },
   },
 ];
@@ -68,6 +86,21 @@ const azureItems: SettingItem<ExperimentalOpenAI>[] = [
       type: 'text',
       placeholder: 'gpt-4o',
     },
+  },
+];
+
+const featureItems = [
+  {
+    key: 'enable_title_enhancement' as const,
+    label: () => t('config.experimental_openai_set.enable_title_enhancement'),
+  },
+  {
+    key: 'enable_rss_match' as const,
+    label: () => t('config.experimental_openai_set.enable_rss_match'),
+  },
+  {
+    key: 'enable_dandanplay_match' as const,
+    label: () => t('config.experimental_openai_set.enable_dandanplay_match'),
   },
 ];
 </script>
@@ -96,11 +129,70 @@ const azureItems: SettingItem<ExperimentalOpenAI>[] = [
             v-model:data="openAI[i.configKey]"
           />
 
+          <div class="test-section">
+            <ab-button
+              size="small"
+              type="secondary"
+              :disabled="isTesting || !openAI.api_key"
+              @click="testConnection"
+            >
+              <div v-if="isTesting" i-carbon-circle-dash animate-spin />
+              <span>{{
+                isTesting
+                  ? $t('config.experimental_openai_set.testing')
+                  : $t('config.experimental_openai_set.test')
+              }}</span>
+            </ab-button>
+            <p
+              v-if="testMessage"
+              class="test-result"
+              :class="testSuccess ? 'test-success' : 'test-error'"
+            >
+              {{ testMessage }}
+            </p>
+          </div>
+
+          <template v-if="openAI.api_type === 'azure'">
+            <ab-setting
+              v-for="i in azureItems"
+              :key="i.configKey"
+              v-bind="i"
+              v-model:data="openAI[i.configKey]"
+            />
+          </template>
+
+          <div class="section-divider"></div>
+          <div class="section-label">
+            {{ $t('config.experimental_openai_set.features_title') }}
+          </div>
+
           <ab-setting
-            v-for="i in openAI.api_type === 'azure' ? azureItems : openAIItems"
-            :key="i.configKey"
-            v-bind="i"
-            v-model:data="openAI[i.configKey]"
+            v-for="f in featureItems"
+            :key="f.key"
+            v-model:data="openAI.features[f.key]"
+            :config-key="f.key"
+            :label="f.label"
+            type="switch"
+          />
+
+          <div class="section-divider"></div>
+          <div class="section-label">
+            {{ $t('config.experimental_openai_set.dandanplay_title') }}
+          </div>
+
+          <ab-setting
+            v-model:data="dandanplay.app_id"
+            config-key="app_id"
+            :label="() => t('config.experimental_openai_set.app_id')"
+            type="input"
+            :prop="{ type: 'text', placeholder: 'App ID' }"
+          />
+          <ab-setting
+            v-model:data="dandanplay.app_secret"
+            config-key="app_secret"
+            :label="() => t('config.experimental_openai_set.app_secret')"
+            type="input"
+            :prop="{ type: 'password', placeholder: 'App Secret' }"
           />
         </div>
       </transition>
@@ -126,7 +218,7 @@ const azureItems: SettingItem<ExperimentalOpenAI>[] = [
   color: var(--color-warning);
   font-size: 12px;
   transition: background-color var(--transition-normal),
-              border-color var(--transition-normal);
+    border-color var(--transition-normal);
 }
 
 .openai-config {
@@ -134,6 +226,47 @@ const azureItems: SettingItem<ExperimentalOpenAI>[] = [
   flex-direction: column;
   gap: 16px;
   padding-top: 4px;
+}
+
+.section-divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 4px 0;
+}
+
+.section-label {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.test-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.test-result {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin: 0;
+}
+
+.test-success {
+  color: var(--color-success, #22c55e);
+  background: color-mix(
+    in srgb,
+    var(--color-success, #22c55e) 10%,
+    transparent
+  );
+}
+
+.test-error {
+  color: var(--color-danger, #ef4444);
+  background: color-mix(in srgb, var(--color-danger, #ef4444) 10%, transparent);
 }
 
 .slide-fade-enter-active {

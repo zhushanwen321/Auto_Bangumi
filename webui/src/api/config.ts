@@ -1,5 +1,11 @@
-import type { Config } from '#/config';
+import type { Config, ExperimentalOpenAI } from '#/config';
 import type { ApiSuccess } from '#/api';
+
+export interface TestOpenAIResponse {
+  success: boolean;
+  message_en: string;
+  message_zh: string;
+}
 
 export const apiConfig = {
   /**
@@ -18,6 +24,24 @@ export const apiConfig = {
     const { data } = await axios.patch<ApiSuccess>(
       'api/v1/config/update',
       newConfig
+    );
+    return data;
+  },
+
+  /**
+   * 测试 OpenAI 连接（使用当前表单中的配置，不会保存）
+   */
+  async testOpenAI(config: ExperimentalOpenAI) {
+    const { data } = await axios.post<TestOpenAIResponse>(
+      'api/v1/config/test-openai',
+      {
+        api_key: config.api_key,
+        api_base: config.api_base,
+        api_type: config.api_type,
+        api_version: config.api_version,
+        model: config.model,
+        deployment_id: config.deployment_id,
+      }
     );
     return data;
   },

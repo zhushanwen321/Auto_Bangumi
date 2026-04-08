@@ -13,7 +13,13 @@ from module.update import (
     start_up,
 )
 
-from .sub_thread import CalendarRefreshThread, OffsetScanThread, RenameThread, RSSThread
+from .sub_thread import (
+    CalendarRefreshThread,
+    DandanplayThread,
+    OffsetScanThread,
+    RenameThread,
+    RSSThread,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +35,9 @@ figlet = r"""
 """
 
 
-class Program(RenameThread, RSSThread, OffsetScanThread, CalendarRefreshThread):
+class Program(
+    RenameThread, RSSThread, OffsetScanThread, CalendarRefreshThread, DandanplayThread
+):
     def __init__(self):
         super().__init__()
         self._startup_done = False
@@ -102,6 +110,8 @@ class Program(RenameThread, RSSThread, OffsetScanThread, CalendarRefreshThread):
         self.scan_start()
         # Start calendar refresh (every 24 hours)
         self.calendar_start()
+        # Start dandanplay title refresh (every 24 hours)
+        self.dandanplay_start()
         self._tasks_started = True
         logger.info("Program running.")
         return ResponseModel(
@@ -117,6 +127,7 @@ class Program(RenameThread, RSSThread, OffsetScanThread, CalendarRefreshThread):
             await self.rss_stop()
             await self.scan_stop()
             await self.calendar_stop()
+            await self.dandanplay_stop()
             self._tasks_started = False
             return ResponseModel(
                 status=True,

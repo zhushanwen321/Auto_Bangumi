@@ -1,34 +1,40 @@
-import json
 import logging
-from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Optional
+from typing import Optional
 
-from openai import AzureOpenAI, OpenAI
 from pydantic import BaseModel
 
-from module.models import Bangumi
+from module.network.openai_client import call_json, create_openai_client
 
 logger = logging.getLogger(__name__)
 
 
 class Episode(BaseModel):
-    title_en: Optional[str]
-    title_zh: Optional[str]
-    title_jp: Optional[str]
-    season: str
-    season_raw: str
-    episode: str
-    sub: str
-    group: str
-    resolution: str
-    source: str
+    title_en: Optional[str] = None
+    title_zh: Optional[str] = None
+    title_jp: Optional[str] = None
+    season: str = ""
+    season_raw: str = ""
+    episode: str = ""
+    sub: str = ""
+    group: str = ""
+    resolution: str = ""
+    source: str = ""
 
 
 DEFAULT_PROMPT = """\
-You will now play the role of a super assistant. 
-Your task is to extract structured data from unstructured text content and output it in JSON format. 
-If you are unable to extract any information, please keep all fields and leave the field empty or default value like `''`, `None`.
-But Do not fabricate data!
+You are an anime torrent name parser. Extract structured data from the given text and return a JSON object with these fields:
+- title_en: English official title (null if unknown)
+- title_zh: Chinese title (null if unknown)
+- title_jp: Japanese title (null if unknown)
+- season: Season number, e.g. "1", "2" (empty string if unknown)
+- season_raw: Raw season string from text, e.g. "S01", "Season 2" (empty string if unknown)
+- episode: Episode number, e.g. "01", "12" (empty string if unknown)
+- sub: Subtitle group name (empty string if unknown)
+- group: Release group name (empty string if unknown)
+- resolution: Video resolution, e.g. "1080p" (empty string if unknown)
+- source: Video source, e.g. "WebRip", "BDRip" (empty string if unknown)
+
+If you cannot extract a field, use null for optional fields or empty string for required fields. Do not fabricate data.
 """
 
 
@@ -61,16 +67,15 @@ class OpenAIParser:
         """
         if not api_key:
             raise ValueError("API key is required.")
-        if api_type == "azure":
-            self.client = AzureOpenAI(
-                api_key=api_key,
-                base_url=api_base,
-                azure_deployment=kwargs.get("deployment_id", ""),
-                api_version=kwargs.get("api_version", "2023-05-15"),
-            )
-        else:
-            self.client = OpenAI(api_key=api_key, base_url=api_base)
 
+        config = dict(
+            api_key=api_key,
+            api_base=api_base,
+            model=model,
+            api_type=api_type,
+            **kwargs,
+        )
+        self.client = create_openai_client(config)
         self.model = model
         self.openai_kwargs = kwargs
 
@@ -94,58 +99,28 @@ class OpenAIParser:
         if not prompt:
             prompt = DEFAULT_PROMPT
 
-        params = self._prepare_params(text, prompt)
+        messages = [
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": text},
+        ]
 
-        with ThreadPoolExecutor(max_workers=1) as worker:
-            future = worker.submit(self.client.beta.chat.completions.parse, **params)
-            resp = future.result()
-
-            result = resp.choices[0].message.parsed
-
-        if asdict:
-            if hasattr(result, "model_dump"):
-                result = result.model_dump()
-            else:
-                try:
-                    result = json.loads(
-                        result[result.index("{") : result.rindex("}") + 1]
-                    )  # find the first { and last } for better compatibility
-                except (json.JSONDecodeError, ValueError):
-                    logger.warning(f"Cannot parse result {result} as python dict.")
-
-        logger.debug("the parsed result is: %s", result)
-
-        return result
-
-    def _prepare_params(self, text: str, prompt: str) -> dict[str, Any]:
-        """_prepare_params is a helper function to prepare params for openai library.
-        There are some differences between openai and azure openai api, so we need to
-        prepare params for them.
-
-        Args:
-            text (str): the text to be parsed
-            prompt (str): the custom prompt
-
-        Returns:
-            dict[str, Any]: the prepared key value pairs.
-        """
-        params = dict(
-            model=self.model,
-            messages=[
-                dict(role="system", content=prompt),
-                dict(role="user", content=text),
-            ],
-            response_format=Episode,
-            # set temperature to 0 to make results be more stable and reproducible.
+        logger.info("[LLM] 标题解析 | 输入: %s", text[:80])
+        result = call_json(
+            self.client,
+            self.model,
+            messages,
+            response_model=Episode,
             temperature=0,
         )
 
-        api_type = self.openai_kwargs.get("api_type", "openai")
-        if api_type == "azure":
-            params["deployment_id"] = self.openai_kwargs.get("deployment_id", "")
-            params["api_version"] = self.openai_kwargs.get("api_version", "2023-05-15")
-            params["api_type"] = "azure"
-        else:
-            params["model"] = self.model
+        if asdict:
+            result = result.model_dump()
 
-        return params
+        logger.info(
+            "[LLM] 标题解析 | 结果: title_en=%s, season=%s, episode=%s, group=%s",
+            result.get("title_en"),
+            result.get("season"),
+            result.get("episode"),
+            result.get("group"),
+        )
+        return result
