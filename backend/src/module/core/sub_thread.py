@@ -222,25 +222,42 @@ class DandanplayThread(ProgramStatus):
 
         while not self._dandanplay_stop_event.is_set():
             try:
-                if (
-                    settings.bangumi_manage.rename_method
-                    in ("dandanplay", "subtitle_dandanplay")
-                    and settings.dandanplay.enable
+                if settings.bangumi_manage.rename_method in (
+                    "dandanplay",
+                    "subtitle_dandanplay",
                 ):
                     from module.database import Database
 
                     with Database() as db:
                         records = db.bangumi.get_bangumi_missing_dandanplay()
                         if records:
-                            from module.searcher.dandanplay import (
-                                batch_update_dandanplay_titles,
-                            )
+                            # 根据 AI 开关选择搜索方式
+                            if (
+                                settings.experimental_openai.enable
+                                and settings.experimental_openai.features.enable_dandanplay_match
+                            ):
+                                from module.searcher.dandanplay import (
+                                    batch_update_dandanplay_titles_ai,
+                                )
 
-                            await batch_update_dandanplay_titles(
-                                records=records,
-                                app_id=settings.dandanplay.app_id,
-                                app_secret=settings.dandanplay.app_secret,
-                            )
+                                await batch_update_dandanplay_titles_ai(
+                                    records=records,
+                                    app_id=settings.dandanplay.app_id,
+                                    app_secret=settings.dandanplay.app_secret,
+                                    openai_config=settings.experimental_openai.dict(
+                                        exclude={"enable", "features"}
+                                    ),
+                                )
+                            else:
+                                from module.searcher.dandanplay import (
+                                    batch_update_dandanplay_titles,
+                                )
+
+                                await batch_update_dandanplay_titles(
+                                    records=records,
+                                    app_id=settings.dandanplay.app_id,
+                                    app_secret=settings.dandanplay.app_secret,
+                                )
                             logger.info(
                                 f"[DandanplayThread] Updated {len(records)} bangumi titles"
                             )

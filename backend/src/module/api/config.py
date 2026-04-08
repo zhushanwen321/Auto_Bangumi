@@ -62,10 +62,9 @@ async def get_config():
 
 
 async def _trigger_dandanplay_batch():
-    """后台批量补全 dandanplay_title。"""
+    """后台批量补全 dandanplay_title，支持简单搜索和 AI 增强搜索。"""
     try:
         from module.database import Database
-        from module.searcher.dandanplay import batch_update_dandanplay_titles
 
         # 先在独立 session 中查询需要的记录（只取 id 和 official_title）
         with Database() as db:
@@ -78,11 +77,30 @@ async def _trigger_dandanplay_batch():
             {"id": r.id, "official_title": r.official_title} for r in records
         ]
         logger.info("[Dandanplay] Batch update triggered: %d records", len(record_data))
-        await batch_update_dandanplay_titles(
-            records=record_data,
-            app_id=settings.dandanplay.app_id,
-            app_secret=settings.dandanplay.app_secret,
-        )
+
+        # 根据 AI 开关选择搜索方式
+        if (
+            settings.experimental_openai.enable
+            and settings.experimental_openai.features.enable_dandanplay_match
+        ):
+            from module.searcher.dandanplay import batch_update_dandanplay_titles_ai
+
+            await batch_update_dandanplay_titles_ai(
+                records=record_data,
+                app_id=settings.dandanplay.app_id,
+                app_secret=settings.dandanplay.app_secret,
+                openai_config=settings.experimental_openai.dict(
+                    exclude={"enable", "features"}
+                ),
+            )
+        else:
+            from module.searcher.dandanplay import batch_update_dandanplay_titles
+
+            await batch_update_dandanplay_titles(
+                records=record_data,
+                app_id=settings.dandanplay.app_id,
+                app_secret=settings.dandanplay.app_secret,
+            )
     except Exception as e:
         logger.warning("[Dandanplay] Batch update failed: %s", e)
 
@@ -105,7 +123,6 @@ async def update_config(config: Config):
         if (
             old_method not in ("dandanplay", "subtitle_dandanplay")
             and new_method in ("dandanplay", "subtitle_dandanplay")
-            and settings.dandanplay.enable
         ):
             _dandanplay_task = asyncio.create_task(_trigger_dandanplay_batch())
             # 保存引用避免 GC 回收导致任务静默丢失

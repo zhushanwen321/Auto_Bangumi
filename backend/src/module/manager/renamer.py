@@ -479,8 +479,10 @@ class Renamer(DownloadClient):
             episode_offset = rename_info.episode_offset
             season_offset = rename_info.season_offset
             # When using dandanplay rename method, replace bangumi_name with dandanplay_title
-            if rename_method in ("dandanplay", "subtitle_dandanplay") and rename_info.dandanplay_title:
-                bangumi_name = rename_info.dandanplay_title
+            if rename_method in ("dandanplay", "subtitle_dandanplay"):
+                if rename_info.dandanplay_title:
+                    bangumi_name = rename_info.dandanplay_title
+                # If no dandanplay_title, fall back to official_title (existing behavior)
             kwargs = {
                 "torrent_name": torrent_name,
                 "bangumi_name": bangumi_name,
