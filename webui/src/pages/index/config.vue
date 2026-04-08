@@ -48,7 +48,6 @@ onActivated(() => {
         <config-search-provider></config-search-provider>
         <config-player></config-player>
         <config-openai></config-openai>
-        <config-dandanplay></config-dandanplay>
         <config-passkey></config-passkey>
         <config-security></config-security>
       </div>

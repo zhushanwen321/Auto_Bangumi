@@ -1,13 +1,13 @@
 <script lang="ts" setup>
 import { Caution } from '@icon-park/vue-next';
 import type { SettingItem } from '#/components';
-import type { ExperimentalOpenAI, OpenAIModel, OpenAIType } from '#/config';
+import type { ExperimentalOpenAI, OpenAIType } from '#/config';
 
 const { t } = useMyI18n();
 const { getSettingGroup } = useConfigStore();
 
 const openAI = getSettingGroup('experimental_openai');
-const openAIModels: OpenAIModel = ['gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo'];
+const dandanplay = getSettingGroup('dandanplay');
 const openAITypes: OpenAIType = ['openai', 'azure'];
 
 const providerItems: SettingItem<ExperimentalOpenAI>[] = [
@@ -37,15 +37,13 @@ const providerItems: SettingItem<ExperimentalOpenAI>[] = [
       placeholder: 'https://api.openai.com/v1',
     },
   },
-];
-
-const openAIItems: SettingItem<ExperimentalOpenAI>[] = [
   {
     configKey: 'model',
     label: () => t('config.experimental_openai_set.model'),
-    type: 'select',
+    type: 'input',
     prop: {
-      items: openAIModels,
+      type: 'text',
+      placeholder: 'gpt-4o-mini',
     },
   },
 ];
@@ -68,6 +66,21 @@ const azureItems: SettingItem<ExperimentalOpenAI>[] = [
       type: 'text',
       placeholder: 'gpt-4o',
     },
+  },
+];
+
+const featureItems = [
+  {
+    key: 'enable_title_enhancement' as const,
+    label: () => t('config.experimental_openai_set.enable_title_enhancement'),
+  },
+  {
+    key: 'enable_rss_match' as const,
+    label: () => t('config.experimental_openai_set.enable_rss_match'),
+  },
+  {
+    key: 'enable_dandanplay_match' as const,
+    label: () => t('config.experimental_openai_set.enable_dandanplay_match'),
   },
 ];
 </script>
@@ -96,11 +109,47 @@ const azureItems: SettingItem<ExperimentalOpenAI>[] = [
             v-model:data="openAI[i.configKey]"
           />
 
+          <template v-if="openAI.api_type === 'azure'">
+            <ab-setting
+              v-for="i in azureItems"
+              :key="i.configKey"
+              v-bind="i"
+              v-model:data="openAI[i.configKey]"
+            />
+          </template>
+
+          <div class="section-divider"></div>
+          <div class="section-label">
+            {{ $t('config.experimental_openai_set.features_title') }}
+          </div>
+
           <ab-setting
-            v-for="i in openAI.api_type === 'azure' ? azureItems : openAIItems"
-            :key="i.configKey"
-            v-bind="i"
-            v-model:data="openAI[i.configKey]"
+            v-for="f in featureItems"
+            :key="f.key"
+            v-model:data="openAI.features[f.key]"
+            :config-key="f.key"
+            :label="f.label"
+            type="switch"
+          />
+
+          <div class="section-divider"></div>
+          <div class="section-label">
+            {{ $t('config.experimental_openai_set.dandanplay_title') }}
+          </div>
+
+          <ab-setting
+            v-model:data="dandanplay.app_id"
+            config-key="app_id"
+            :label="() => t('config.experimental_openai_set.app_id')"
+            type="input"
+            :prop="{ type: 'text', placeholder: 'App ID' }"
+          />
+          <ab-setting
+            v-model:data="dandanplay.app_secret"
+            config-key="app_secret"
+            :label="() => t('config.experimental_openai_set.app_secret')"
+            type="input"
+            :prop="{ type: 'password', placeholder: 'App Secret' }"
           />
         </div>
       </transition>
@@ -126,7 +175,7 @@ const azureItems: SettingItem<ExperimentalOpenAI>[] = [
   color: var(--color-warning);
   font-size: 12px;
   transition: background-color var(--transition-normal),
-              border-color var(--transition-normal);
+    border-color var(--transition-normal);
 }
 
 .openai-config {
@@ -134,6 +183,20 @@ const azureItems: SettingItem<ExperimentalOpenAI>[] = [
   flex-direction: column;
   gap: 16px;
   padding-top: 4px;
+}
+
+.section-divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 4px 0;
+}
+
+.section-label {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
 }
 
 .slide-fade-enter-active {
